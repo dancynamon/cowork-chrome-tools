@@ -1,0 +1,8 @@
+# macOS
+.DS_Store
+
+# Packaged build artifacts
+*.zip
+
+# Stray unzipped version copies (the live source is the repo root)
+gmail-message-link-copier-v*/
