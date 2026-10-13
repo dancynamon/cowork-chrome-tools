@@ -38,6 +38,34 @@ function labelForUrl(url) {
   return { label: base.charAt(0).toUpperCase() + base.slice(1), color: 'cyan' };
 }
 
+// True when auto-labeling may overwrite `current`: it is empty, a Claude in
+// Chrome default, or exactly the label this module last wrote to the group.
+function isReplaceableTitle(current, lastAutoTitle) {
+  const title = current || '';
+  return DEFAULT_TITLES.includes(title) || (lastAutoTitle !== undefined && lastAutoTitle === title);
+}
+
+// Pick the label for a group from its tabs' URLs: the site with the most tabs
+// wins. Ties keep the current label (so the chip does not flip back and forth
+// as tabs come and go), otherwise go to the site of the left-most tab.
+function dominantLabel(urls, currentTitle) {
+  const tally = new Map();
+  urls.forEach((url, index) => {
+    const guess = labelForUrl(url || '');
+    if (!guess) return;
+    const entry = tally.get(guess.label);
+    if (entry) entry.count++;
+    else tally.set(guess.label, { label: guess.label, color: guess.color, count: 1, first: index });
+  });
+  if (tally.size === 0) return null;
+
+  const ranked = [...tally.values()].sort((a, b) => b.count - a.count || a.first - b.first);
+  const best = ranked[0];
+  const incumbent = tally.get(currentTitle);
+  if (incumbent && incumbent.count >= best.count) return incumbent;
+  return best;
+}
+
 async function isEnabled() {
   const { autoLabel } = await chrome.storage.local.get({ autoLabel: true });
   return autoLabel;
@@ -63,26 +91,40 @@ async function maybeLabelGroup(groupId) {
 
   const current = group.title || '';
   const mine = await ourTitles();
-  const replaceable = DEFAULT_TITLES.includes(current) || mine[String(groupId)] === current;
-  if (!replaceable) return; // a session or the popup named this group - leave it alone
+  if (!isReplaceableTitle(current, mine[String(groupId)])) return; // a session or the popup named it
 
   const tabs = await chrome.tabs.query({ groupId });
-  for (const tab of tabs) {
-    const guess = labelForUrl(tab.url || tab.pendingUrl || '');
-    if (!guess) continue;
-    if (guess.label === current) return;
-    try {
-      await chrome.tabGroups.update(groupId, { title: guess.label, color: guess.color });
-      await rememberTitle(groupId, guess.label);
-    } catch (e) { /* group closed mid-flight */ }
-    return;
-  }
+  tabs.sort((a, b) => a.index - b.index);
+  const pick = dominantLabel(tabs.map((t) => t.url || t.pendingUrl || ''), current);
+  if (!pick || pick.label === current) return;
+
+  try {
+    await chrome.tabGroups.update(groupId, { title: pick.label, color: pick.color });
+    await rememberTitle(groupId, pick.label);
+  } catch (e) { /* group closed mid-flight */ }
 }
 
-chrome.tabGroups.onCreated.addListener((g) => maybeLabelGroup(g.id));
+// Coalesce bursts (a page load fires several onUpdated events, opening N tabs
+// fires N) into one evaluation per group.
+const AUTO_DEBOUNCE_MS = 400;
+const pending = new Map();
+
+function scheduleLabel(groupId) {
+  if (groupId === undefined || groupId === chrome.tabGroups.TAB_GROUP_ID_NONE) return;
+  clearTimeout(pending.get(groupId));
+  pending.set(groupId, setTimeout(() => {
+    pending.delete(groupId);
+    maybeLabelGroup(groupId);
+  }, AUTO_DEBOUNCE_MS));
+}
+
+chrome.tabGroups.onCreated.addListener((g) => scheduleLabel(g.id));
+// Only a URL change or a tab joining a group can change the answer. Plain
+// status/title/favicon churn (including a discarded tab reloading when you
+// switch to it) is ignored, and tab activation is not listened to at all.
 chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
-  if (info.status === 'complete' || info.url) maybeLabelGroup(tab.groupId);
+  if (info.url !== undefined || info.groupId !== undefined) scheduleLabel(tab.groupId);
 });
 chrome.tabs.onAttached.addListener((tabId) => {
-  chrome.tabs.get(tabId).then((t) => maybeLabelGroup(t.groupId)).catch(() => {});
+  chrome.tabs.get(tabId).then((t) => scheduleLabel(t.groupId)).catch(() => {});
 });
