@@ -215,6 +215,9 @@ shortcuts, `popup.js` for the popup's Gmail section).
 
 ## Changelog
 
+- **2.0.1** — restore only fires on a group titled "Claude", not on the blank
+  title a new group has before Claude in Chrome names it (a new session in the
+  same window was getting the previous task's name; found in live testing).
 - **2.0.0** — merged with Gmail Message Link Copier 1.4.1 (history kept under
   `gmail/`) into one extension, "Cowork Chrome Tools".
 - **1.4.0** — Claude in Chrome's `⌛`/`✅` status emoji understood everywhere

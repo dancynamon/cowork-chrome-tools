@@ -15,6 +15,12 @@
 const MAX_RESTORES_PER_GROUP = 2;  // Claude in Chrome may re-title once more after we restore
 const MAX_TITLES_PER_WINDOW = 5;
 
+// Only a group explicitly titled "Claude" (any status emoji) is restored. A
+// brand-new group is blank for a moment before Claude in Chrome gives it the
+// session's own name; restoring into that blank would hand a new task the
+// previous task's name.
+function isRestoreTrigger(title) { return baseTitle(title) === 'Claude'; }
+
 async function restoreEnabled() {
   try {
     const { restoreTitle } = await chrome.storage.local.get({ restoreTitle: true });
@@ -57,7 +63,7 @@ function rememberExplicitTitle(group) { return rememberName(group); }
 //   restores  how often this group was already restored
 //   aliveIds  Set of group ids that still exist
 function pickRestore({ currentTitle, groupId, records, restores, aliveIds }) {
-  if (!isDefaultTitle(currentTitle) || !Array.isArray(records)) return null;
+  if (!isRestoreTrigger(currentTitle) || !Array.isArray(records)) return null;
   if (restores > 0) {
     // Claude in Chrome reset a title we restored: put it back, but do not fight.
     if (restores >= MAX_RESTORES_PER_GROUP) return null;
@@ -78,7 +84,7 @@ async function maybeRestoreTitle(groupId) {
 async function restoreGroup(groupId) {
   let group;
   try { group = await chrome.tabGroups.get(groupId); } catch (e) { return false; }
-  if (!isDefaultTitle(group.title)) return false;
+  if (!isRestoreTrigger(group.title)) return false;
 
   const { lastTitles, restoredGroups } =
     await chrome.storage.session.get({ lastTitles: {}, restoredGroups: {} });
@@ -112,10 +118,10 @@ async function restoreGroup(groupId) {
   return true;
 }
 
-// A group that turns "Claude" gets its name back; a group that gets a real name
+// A group titled "Claude" gets its name back; a group that gets a real name
 // (from anyone) has it remembered. auto.js also calls maybeRestoreTitle first on
 // onCreated, so a group created already titled is covered too.
 chrome.tabGroups.onUpdated.addListener((g) => {
-  if (isDefaultTitle(g.title)) maybeRestoreTitle(g.id);
-  else rememberName(g);
+  if (isRestoreTrigger(g.title)) maybeRestoreTitle(g.id);
+  else if (!isDefaultTitle(g.title)) rememberName(g);
 });

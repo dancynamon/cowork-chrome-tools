@@ -124,6 +124,7 @@ test('pickRestore decision table', () => {
   assert.equal(ctx.pickRestore(base).title, 'Kiefer Pallet');
   assert.equal(ctx.pickRestore({ ...base, records: undefined }), null);
   assert.equal(ctx.pickRestore({ ...base, currentTitle: 'Shopify' }), null);
+  assert.equal(ctx.pickRestore({ ...base, currentTitle: '' }), null);              // blank while being created
   assert.equal(ctx.pickRestore({ ...base, aliveIds: new Set([1]) }), null);        // parallel group
   assert.equal(ctx.pickRestore({ ...base, groupId: 1 }), null);                     // same group, never restored
   // Most recent name whose group is gone wins; open groups are skipped.
@@ -168,6 +169,24 @@ test('restore: names Claude in Chrome itself gave the group are remembered too',
   chrome._retitle(fresh, '⌛Claude');
   await chrome._settle();
   assert.equal(chrome._groups.get(fresh).title, '⌛Cowork Tab Group Namer');
+});
+
+test('restore: a new blank group is left for Claude in Chrome to name, not restored', async () => {
+  const { ctx, chrome } = loadBackground();
+  const old = chrome._addGroup({ windowId: 5, title: '' });
+  chrome._retitle(old, '⌛Task A');
+  await chrome._settle();
+  chrome._removeGroup(old);
+
+  const fresh = chrome._addGroup({ windowId: 5, title: '' });
+  chrome._addTab({ id: 1, groupId: fresh, url: 'https://example.com/' });
+  chrome._retitle(fresh, '');
+  await chrome._settle();
+  assert.equal(chrome._groups.get(fresh).title, '');
+  chrome._retitle(fresh, '⌛Task B'); // Claude in Chrome names the new session's group
+  await ctx.maybeLabelGroup(fresh);
+  await chrome._settle();
+  assert.equal(chrome._groups.get(fresh).title, '⌛Task B');
 });
 
 test('restore: site labels are not remembered as names', async () => {
