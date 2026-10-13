@@ -4,8 +4,9 @@
 // exposes it. But it CAN see what a group's tabs are, and "QBO" / "Shopify" /
 // "Gmail" already tells Dan which chip is which without any session involvement.
 //
-// Rule: only ever replace a title that is empty, the extension default
-// ("Claude"), or a label this module set itself. A name set by a Claude session
+// Rule: only ever replace a title that is empty, the Claude in Chrome default
+// ("Claude", with or without its status emoji), or a label this module set
+// itself. A name set by a Claude session
 // or typed in the popup is authoritative and is never overwritten.
 
 const SITE_MAP = [
@@ -22,7 +23,26 @@ const SITE_MAP = [
   { match: /maytronics/,                                 label: 'Maytronics', color: 'cyan' }
 ];
 
-const DEFAULT_TITLES = ['', 'Claude', '✅Claude', '✅ Claude'];
+// Claude in Chrome prefixes its group titles with a status emoji ("⌛" while a
+// session is working, "✅" when done) and keeps that prefix on any name we set:
+// "Kiefer Pallet" becomes "⌛Kiefer Pallet" on its next action. All title
+// comparisons therefore use the base title with that prefix stripped, and any
+// title we write keeps whatever prefix is there.
+const STATUS_PREFIX = /^[\p{Extended_Pictographic}\uFE0F\u200D\s]+/u;
+
+function splitStatus(title) {
+  const t = title || '';
+  const m = t.match(STATUS_PREFIX);
+  const prefix = m ? m[0] : '';
+  return { prefix, base: t.slice(prefix.length) };
+}
+
+function baseTitle(title) { return splitStatus(title).base; }
+
+// Base titles Claude in Chrome gives a group it has not been told to name.
+const DEFAULT_TITLES = ['', 'Claude'];
+
+function isDefaultTitle(title) { return DEFAULT_TITLES.includes(baseTitle(title)); }
 
 function labelForUrl(url) {
   let host;
@@ -39,10 +59,11 @@ function labelForUrl(url) {
 }
 
 // True when auto-labeling may overwrite `current`: it is empty, a Claude in
-// Chrome default, or exactly the label this module last wrote to the group.
+// Chrome default, or the label this module last wrote to the group (status
+// emoji ignored in both cases).
 function isReplaceableTitle(current, lastAutoTitle) {
-  const title = current || '';
-  return DEFAULT_TITLES.includes(title) || (lastAutoTitle !== undefined && lastAutoTitle === title);
+  const base = baseTitle(current);
+  return DEFAULT_TITLES.includes(base) || (lastAutoTitle !== undefined && lastAutoTitle === base);
 }
 
 // Pick the label for a group from its tabs' URLs: the site with the most tabs
@@ -91,17 +112,17 @@ async function maybeLabelGroup(groupId) {
   let group;
   try { group = await chrome.tabGroups.get(groupId); } catch (e) { return; }
 
-  const current = group.title || '';
+  const { prefix, base } = splitStatus(group.title);
   const mine = await ourTitles();
-  if (!isReplaceableTitle(current, mine[String(groupId)])) return; // a session or the popup named it
+  if (!isReplaceableTitle(group.title, mine[String(groupId)])) return; // a session or the popup named it
 
   const tabs = await chrome.tabs.query({ groupId });
   tabs.sort((a, b) => a.index - b.index);
-  const pick = dominantLabel(tabs.map((t) => t.url || t.pendingUrl || ''), current);
-  if (!pick || pick.label === current) return;
+  const pick = dominantLabel(tabs.map((t) => t.url || t.pendingUrl || ''), base);
+  if (!pick || pick.label === base) return;
 
   try {
-    await chrome.tabGroups.update(groupId, { title: pick.label, color: pick.color });
+    await chrome.tabGroups.update(groupId, { title: prefix + pick.label, color: pick.color });
     await rememberTitle(groupId, pick.label);
   } catch (e) { /* group closed mid-flight */ }
 }

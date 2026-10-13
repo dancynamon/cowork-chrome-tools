@@ -22,10 +22,10 @@ async function restoreEnabled() {
 
 // Called by background.js after a successful explicit rename.
 async function rememberExplicitTitle(group) {
-  if (!group || DEFAULT_TITLES.includes(group.title || '')) return;
+  if (!group || isDefaultTitle(group.title)) return;
   try {
     const { lastTitles } = await chrome.storage.session.get({ lastTitles: {} });
-    lastTitles[String(group.windowId)] = { groupId: group.id, title: group.title, color: group.color };
+    lastTitles[String(group.windowId)] = { groupId: group.id, title: baseTitle(group.title), color: group.color };
     await chrome.storage.session.set({ lastTitles });
   } catch (e) { /* storage.session unavailable */ }
 }
@@ -34,7 +34,7 @@ async function rememberExplicitTitle(group) {
 // title, `restores` how often this group was already restored, `oldGroupAlive`
 // whether record.groupId still exists.
 function shouldRestore({ currentTitle, groupId, record, restores, oldGroupAlive }) {
-  if (!record || !DEFAULT_TITLES.includes(currentTitle || '')) return false;
+  if (!record || !isDefaultTitle(currentTitle)) return false;
   if (restores > 0) return restores < MAX_RESTORES_PER_GROUP; // Claude reset our restore
   return record.groupId !== groupId && !oldGroupAlive;
 }
@@ -64,7 +64,7 @@ async function restoreGroup(groupId) {
   if (!shouldRestore({ currentTitle: group.title, groupId, record, restores, oldGroupAlive })) return false;
 
   try {
-    const props = { title: record.title };
+    const props = { title: splitStatus(group.title).prefix + record.title };
     if (record.color) props.color = record.color;
     await chrome.tabGroups.update(groupId, props);
   } catch (e) { return false; }
@@ -78,5 +78,5 @@ async function restoreGroup(groupId) {
 // Claude in Chrome usually creates the group and then titles it "Claude"; catch
 // that second step (auto.js handles onCreated and calls maybeRestoreTitle first).
 chrome.tabGroups.onUpdated.addListener((g) => {
-  if (DEFAULT_TITLES.includes(g.title || '')) maybeRestoreTitle(g.id);
+  if (isDefaultTitle(g.title)) maybeRestoreTitle(g.id);
 });

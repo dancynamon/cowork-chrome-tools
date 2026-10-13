@@ -14,6 +14,20 @@ test('maybeLabelGroup labels a "Claude" group by its dominant site', async () =>
   assert.equal(chrome._groups.get(g).color, 'purple');
 });
 
+test('maybeLabelGroup handles "⌛Claude" and keeps the status emoji', async () => {
+  const { ctx, chrome } = loadBackground();
+  const g = chrome._addGroup({ title: '⌛Claude' });
+  chrome._addTab({ id: 1, groupId: g, url: 'https://qbo.intuit.com/' });
+  await ctx.maybeLabelGroup(g);
+  assert.equal(chrome._groups.get(g).title, '⌛QBO');
+
+  // Claude in Chrome flips the emoji to done: no rewrite, no churn.
+  chrome._groups.get(g).title = '✅QBO';
+  await ctx.maybeLabelGroup(g);
+  assert.equal(chrome._groups.get(g).title, '✅QBO');
+  assert.equal(chrome._updates.length, 1);
+});
+
 test('maybeLabelGroup never overwrites a session-set title', async () => {
   const { ctx, chrome } = loadBackground();
   const g = chrome._addGroup({ title: 'Claude' });

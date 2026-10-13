@@ -58,6 +58,23 @@ test('isReplaceableTitle: our own last label is replaceable, anything else is no
   assert.equal(isReplaceableTitle('', ''), true);
 });
 
+test('status emoji: Claude in Chrome prefixes are ignored when comparing titles', () => {
+  for (const t of ['Claude', '⌛Claude', '✅Claude', '✅ Claude', '⌛ ', '']) {
+    assert.equal(ctx.isDefaultTitle(t), true, JSON.stringify(t));
+  }
+  assert.equal(ctx.isDefaultTitle('⌛Kiefer Pallet'), false);
+  assert.deepEqual(plain(ctx.splitStatus('⌛Kiefer Pallet')), { prefix: '⌛', base: 'Kiefer Pallet' });
+  assert.deepEqual(plain(ctx.splitStatus('✅️ Done')), { prefix: '✅️ ', base: 'Done' });
+  // Leading digits, # and letters are part of the name, not a status prefix.
+  assert.equal(ctx.baseTitle('#42 Order'), '#42 Order');
+  assert.equal(ctx.baseTitle('71lbs'), '71lbs');
+});
+
+test('isReplaceableTitle: our label with a status emoji added is still ours', () => {
+  assert.equal(isReplaceableTitle('⌛Shopify', 'Shopify'), true);
+  assert.equal(isReplaceableTitle('⌛Kiefer Pallet', 'Shopify'), false);
+});
+
 test('dominantLabel: most common site wins over first tab', () => {
   const pick = dominantLabel([
     'https://mail.google.com/',
