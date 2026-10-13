@@ -9,8 +9,8 @@ Claude Cowork prompt built around the link.
 - **🔗 Copy link** button in the header of every open message.
 - **Keyboard shortcut** — `Alt+Shift+C` copies the message you're reading;
   `Alt+Shift+T` copies the whole thread.
-- **Toolbar popup** — click the extension icon for "Copy this message link"
-  and "Copy thread link" buttons.
+- **Toolbar popup** — on a Gmail tab, the extension's popup shows
+  "Message link" and "Thread link" buttons above the tab group controls.
 
 **Copy a Claude Cowork blurb (deep dive):**
 - **✨** icon on inbox-row hover, or the **✨ Cowork prompt** chip in an open
@@ -47,18 +47,10 @@ Claude Cowork prompt built around the link.
   Gmail API auth. The connector resolves it from `THREAD_ID`/`MSG_ID` in one API
   call, so no browser round-trip is needed regardless.
 
-## Install (Load unpacked)
+## Install
 
-1. Open `chrome://extensions` in Chrome.
-2. Turn on **Developer mode** (top-right toggle).
-3. Click **Load unpacked** and select this folder:
-   `~/Dropbox/DC Claude Shared/Claude Tasks and Projects/Gmail to Cowork Extension`
-4. Open or reload Gmail (`https://mail.google.com`).
-
-You'll now see a small **🔗 Copy link** chip in the header of each open message.
-
-> Already had v1.0 installed? Click the **reload** ⟳ icon on the extension's
-> card in `chrome://extensions` so the new shortcut/popup permissions load.
+Part of **Cowork Chrome Tools** since 2.0.0: load the repository root (one level
+up from this folder) unpacked, not this folder. See the root README.
 
 ### Change the shortcuts
 

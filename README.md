@@ -1,4 +1,18 @@
-# Cowork Tab Group Namer
+# Cowork Chrome Tools
+
+One Chrome extension, two Claude Cowork helpers:
+
+1. **Tab group namer** — everything below this list.
+2. **Gmail link copier** — 🔗 copies a Gmail permalink, ✨ copies a structured
+   Cowork prompt (subject, API thread/message IDs, sender, money, full thread)
+   from any message or inbox row. `Alt+Shift+C` copies the message link,
+   `Alt+Shift+T` the thread link, and the toolbar popup shows both buttons
+   when you are on Gmail. Details: [gmail/README.md](gmail/README.md).
+
+Until 2.0.0 these were two extensions, "Cowork Tab Group Namer" and "Gmail
+Message Link Copier". Remove both old copies when you load this one.
+
+## Tab group namer
 
 Renames the **Chrome tab group chip** (the colored pill left of the tabs, currently
 hardcoded to "Claude" by the Claude in Chrome extension) to the current task name.
@@ -78,8 +92,9 @@ document.documentElement.getAttribute('data-cowork-group-result');
    it from this path on every launch).
 2. Open `chrome://extensions`
 3. Toggle **Developer mode** on, top right.
-4. Click **Load unpacked** and select this folder.
-5. Confirm "Cowork Tab Group Namer" is enabled.
+4. Click **Load unpacked** and select this folder (`~/code/cowork-tab-group-namer`;
+   in the file picker press Cmd+Shift+G and paste the path).
+5. Confirm "Cowork Chrome Tools" is enabled, and reload any open Gmail tabs.
 
 Runs alongside Claude in Chrome. It does not modify or conflict with that extension;
 it only calls `tabGroups.update` on whatever group a tab already belongs to.
@@ -194,10 +209,14 @@ the `auto.js` / `restore.js` it imports) into a vm context with an in-memory
 dominant-site picking, the allowlist and title restore.
 
 Files: `background.js` (message protocol, allowlist), `auto.js` (site naming),
-`restore.js` (name restore), `content.js` (page bridge), `popup.*` (toolbar UI).
+`restore.js` (name restore), `content.js` (page bridge), `popup.*` (toolbar UI),
+`gmail/` (link copier: `content.js`, `styles.css`, `background.js` for the
+shortcuts, `popup.js` for the popup's Gmail section).
 
 ## Changelog
 
+- **2.0.0** — merged with Gmail Message Link Copier 1.4.1 (history kept under
+  `gmail/`) into one extension, "Cowork Chrome Tools".
 - **1.4.0** — Claude in Chrome's `⌛`/`✅` status emoji understood everywhere
   (previously "⌛Claude" groups were never auto-named or restored); lost names
   are restored by default, remembered from every naming source.
