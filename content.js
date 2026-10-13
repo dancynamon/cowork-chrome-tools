@@ -13,7 +13,7 @@
 // Result is written back to <html data-cowork-group-result="..."> so the caller
 // can read it in the same page context.
 //
-// Read-back (v1.1.0): set any value on data-cowork-group-query to have the
+// Read-back: set any value on data-cowork-group-query to have the
 // CURRENT group title written to data-cowork-group-result, without changing it:
 //     document.documentElement.setAttribute('data-cowork-group-query', '1');
 

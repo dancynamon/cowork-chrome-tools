@@ -59,6 +59,8 @@ autoEl.addEventListener('change', () => {
   setStatus(autoEl.checked ? 'Auto-naming on' : 'Auto-naming off', 'ok');
 });
 
+document.getElementById('version').textContent = 'v' + chrome.runtime.getManifest().version;
+
 applyEl.addEventListener('click', apply);
 titleEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') apply(); });
 

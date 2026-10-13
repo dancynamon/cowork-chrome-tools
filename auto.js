@@ -1,4 +1,4 @@
-// Cowork Tab Group Namer - automatic labeling  (v1.2.0)
+// Cowork Tab Group Namer - automatic labeling
 //
 // Why this exists: the extension cannot know the Cowork task name - no channel
 // exposes it. But it CAN see what a group's tabs are, and "QBO" / "Shopify" /

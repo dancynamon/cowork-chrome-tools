@@ -1,4 +1,5 @@
-// Cowork Tab Group Namer - background service worker (MV3)  v1.1.0
+// Cowork Tab Group Namer - background service worker (MV3)
+// Version lives only in manifest.json (chrome.runtime.getManifest().version).
 //
 // Message types:
 //   {type:'setGroupTitle', title, color}          from content script (page-context bridge)
