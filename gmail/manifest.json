@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "Gmail Message Link Copier",
+  "version": "1.4.1",
+  "description": "Copy a Gmail permalink — or a structured Claude Cowork blurb with resolved API thread/message IDs, sender, money, and full thread body — from any message, thread, or inbox row.",
+  "content_scripts": [
+    {
+      "matches": ["https://mail.google.com/*"],
+      "js": ["content.js"],
+      "css": ["styles.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Gmail Message Link Copier"
+  },
+  "commands": {
+    "copy-message-link": {
+      "suggested_key": {
+        "default": "Alt+Shift+C",
+        "mac": "Alt+Shift+C"
+      },
+      "description": "Copy link to the focused Gmail message"
+    },
+    "copy-thread-link": {
+      "suggested_key": {
+        "default": "Alt+Shift+T",
+        "mac": "Alt+Shift+T"
+      },
+      "description": "Copy link to the current Gmail thread"
+    }
+  },
+  "permissions": ["clipboardWrite", "tabs"]
+}
