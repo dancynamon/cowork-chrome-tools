@@ -130,17 +130,31 @@ Valid colors: `grey, blue, red, yellow, green, pink, purple, cyan, orange`
 - The group title persists across navigation on its own. Unlike `document.title`
   tricks, it does not need re-injection after every page load.
 - If Claude in Chrome recreates its tab group, the new group starts as "Claude"
-  again. Either re-run the snippet, or turn on **Restore my last title when
-  Claude recreates its group** in the popup (below).
+  again. Since 1.4.0 the extension puts the lost name back on its own (below).
 
-## Restoring a title after Claude recreates its group (opt-in)
+## Names come back when Cowork returns to the browser (1.4.0, on by default)
 
-With the popup checkbox on, the last title you set explicitly in each window
-(from a session or the popup) is remembered for the browser run. When a new
-group in that window comes up empty or "Claude" *and the group that carried
-that title is gone*, the title and color are put back. A second, parallel group
-is never relabeled, and a group is restored at most twice so the extension never
-fights Claude in Chrome. Restore runs before site auto-naming. Off by default.
+When a Cowork session goes back to Chrome, Claude in Chrome often opens a fresh
+group titled "Claude". The extension remembers the last five real names in each
+window, wherever they came from: the session snippet, the popup, Chrome's own
+rename menu, or the session title Claude in Chrome sets itself. A new group that
+comes up as "Claude" gets the most recent of those names whose group has since
+closed, with its color. Nothing is needed from the session.
+
+- A name still showing on an open group is never copied, so a second group
+  running in parallel is not mislabeled; it falls through to site auto-naming.
+- Site auto-labels ("QBO", "Shopify") are not remembered as names.
+- A group is restored at most twice, so the extension never fights Claude in Chrome.
+- Memory is per browser run (`storage.session`) and per window.
+- Turn it off with **Give a new "Claude" group back the name it lost** in the popup.
+
+### Claude in Chrome status emoji
+
+Claude in Chrome prefixes its group title with a status emoji (`⌛` while a
+session works, `✅` when it is done) and keeps that prefix on any name you set:
+"Kiefer Pallet" shows as "⌛Kiefer Pallet". The extension compares titles without
+the prefix (so "⌛Claude" counts as the default) and keeps the prefix on anything
+it writes. Read-back results include it, e.g. `title="⌛Kiefer Pallet"`.
 
 ## Security: allowed sites
 
@@ -180,10 +194,13 @@ the `auto.js` / `restore.js` it imports) into a vm context with an in-memory
 dominant-site picking, the allowlist and title restore.
 
 Files: `background.js` (message protocol, allowlist), `auto.js` (site naming),
-`restore.js` (title restore), `content.js` (page bridge), `popup.*` (toolbar UI).
+`restore.js` (name restore), `content.js` (page bridge), `popup.*` (toolbar UI).
 
 ## Changelog
 
+- **1.4.0** — Claude in Chrome's `⌛`/`✅` status emoji understood everywhere
+  (previously "⌛Claude" groups were never auto-named or restored); lost names
+  are restored by default, remembered from every naming source.
 - **1.3.0** — single version source (manifest); dominant-site auto-naming,
   debounced, no relabel on tab switch; `cowork-group-result` completion event;
   optional allowed-sites list; optional title restore after Claude recreates its
