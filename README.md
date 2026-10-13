@@ -92,7 +92,7 @@ document.documentElement.getAttribute('data-cowork-group-result');
    it from this path on every launch).
 2. Open `chrome://extensions`
 3. Toggle **Developer mode** on, top right.
-4. Click **Load unpacked** and select this folder (`~/code/cowork-tab-group-namer`;
+4. Click **Load unpacked** and select this folder (`~/code/cowork-chrome-tools`;
    in the file picker press Cmd+Shift+G and paste the path).
 5. Confirm "Cowork Chrome Tools" is enabled, and reload any open Gmail tabs.
 

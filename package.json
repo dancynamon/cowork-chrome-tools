@@ -1,5 +1,5 @@
 {
-  "name": "cowork-tab-group-namer",
+  "name": "cowork-chrome-tools",
   "private": true,
   "description": "Dev-only: test runner for the extension. The extension version lives in manifest.json.",
   "scripts": {
