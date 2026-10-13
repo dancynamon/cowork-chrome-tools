@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Cowork Tab Group Namer",
+  "version": "1.2.0",
+  "description": "Name the Chrome tab group you are working in - automatically from the site in the group, from a Claude session, or by hand from the toolbar popup. Never touches any page's document.title.",
+  "permissions": ["tabGroups", "tabs", "storage"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Name this tab group",
+    "default_popup": "popup.html"
+  },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+G",
+        "mac": "Command+Shift+G"
+      },
+      "description": "Open the tab group namer popup"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ]
+}

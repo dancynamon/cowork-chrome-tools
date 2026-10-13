@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    margin: 0; padding: 14px; width: 260px;
+  }
+  h1 { font-size: 13px; font-weight: 600; margin: 0 0 10px; }
+  label { display: block; font-size: 11px; opacity: .7; margin: 10px 0 3px; }
+  input, select, button {
+    width: 100%; box-sizing: border-box; font-size: 13px;
+    padding: 6px 8px; border-radius: 6px;
+    border: 1px solid rgba(128,128,128,.45); background: transparent; color: inherit;
+  }
+  button {
+    margin-top: 12px; cursor: pointer; font-weight: 600;
+    background: #1B3A5B; color: #fff; border-color: #1B3A5B;
+  }
+  button:hover { opacity: .9; }
+  #status { margin-top: 10px; font-size: 11px; min-height: 15px; }
+  .err { color: #c0392b; }
+  .ok  { color: #1e7a3c; }
+</style>
+</head>
+<body>
+  <h1>Name this tab group</h1>
+
+  <label for="title">Group name</label>
+  <input id="title" type="text" placeholder="Kiefer Pallet" autocomplete="off" spellcheck="false">
+
+  <label for="color">Color</label>
+  <select id="color">
+    <option value="">(leave unchanged)</option>
+    <option value="grey">grey</option>
+    <option value="blue">blue</option>
+    <option value="red">red</option>
+    <option value="yellow">yellow</option>
+    <option value="green">green</option>
+    <option value="pink">pink</option>
+    <option value="purple">purple</option>
+    <option value="cyan">cyan</option>
+    <option value="orange">orange</option>
+  </select>
+
+  <button id="apply">Apply</button>
+
+  <label style="display:flex;align-items:center;gap:6px;margin-top:12px;">
+    <input id="auto" type="checkbox" style="width:auto;margin:0;">
+    <span>Auto-name new "Claude" groups from the site</span>
+  </label>
+
+  <div id="status"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
