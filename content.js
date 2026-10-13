@@ -13,6 +13,16 @@
 // Result is written back to <html data-cowork-group-result="..."> so the caller
 // can read it in the same page context.
 //
+// Completion event: right after the result attribute is written, a bubbling
+// 'cowork-group-result' event is dispatched on <html>, so a caller can await it
+// instead of sleeping. Read the result from the attribute (event.detail carries
+// the same string, but the attribute is the stable contract):
+//     const done = new Promise((r) => document.addEventListener('cowork-group-result',
+//       () => r(document.documentElement.getAttribute('data-cowork-group-result')), { once: true }));
+//     ...set color, then title...
+//     await Promise.race([done, new Promise((r) => setTimeout(r, 2000))]);
+// The attribute protocol is unchanged: a fixed sleep then a read still works.
+//
 // Read-back: set any value on data-cowork-group-query to have the
 // CURRENT group title written to data-cowork-group-result, without changing it:
 //     document.documentElement.setAttribute('data-cowork-group-query', '1');
@@ -21,17 +31,20 @@ const TITLE_ATTR  = 'data-cowork-group-title';
 const COLOR_ATTR  = 'data-cowork-group-color';
 const QUERY_ATTR  = 'data-cowork-group-query';
 const RESULT_ATTR = 'data-cowork-group-result';
+const RESULT_EVENT = 'cowork-group-result';
 
 const VALID_COLORS = [
   'grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan', 'orange'
 ];
 
 function report(text) {
+  const root = document.documentElement;
+  if (!root) return; // documentElement gone (navigation) - nothing to report to
   try {
-    document.documentElement.setAttribute(RESULT_ATTR, text);
-  } catch (e) {
-    // documentElement gone (navigation) - nothing to report to
-  }
+    root.setAttribute(RESULT_ATTR, text);
+    // Attribute first, then the event, so a listener always sees the new value.
+    root.dispatchEvent(new CustomEvent(RESULT_EVENT, { bubbles: true, detail: text }));
+  } catch (e) { /* page tore the DOM down mid-report */ }
 }
 
 function query() {
