@@ -27,6 +27,45 @@ async function forgetAutoTitle(groupId) {
   } catch (e) { /* storage.session unavailable - harmless */ }
 }
 
+// Optional allowlist of sites whose pages may use the content-script bridge
+// (storage.local 'allowlist', edited in the popup). Empty - the default - means
+// any page may rename the group it is in, exactly as before. The popup path is
+// never restricted: it is you clicking the toolbar.
+//
+// Pattern forms: "mail.google.com" (that host only) or "*.myshopify.com" (the
+// domain and every subdomain). A pasted URL is reduced to its hostname.
+function normalizePattern(pattern) {
+  let p = String(pattern || '').trim().toLowerCase();
+  if (!p) return '';
+  const wild = p.startsWith('*.');
+  if (wild) p = p.slice(2);
+  if (/^[a-z][a-z0-9+.-]*:\/\//.test(p)) {
+    try { p = new URL(p).hostname; } catch (e) { return ''; }
+  }
+  p = p.replace(/[\/:].*$/, '').replace(/\.$/, '');
+  return p ? (wild ? '*.' + p : p) : '';
+}
+
+function isHostAllowed(host, allowlist) {
+  const list = (Array.isArray(allowlist) ? allowlist : []).map(normalizePattern).filter(Boolean);
+  if (list.length === 0) return true;
+  const h = String(host || '').toLowerCase().replace(/\.$/, '');
+  if (!h) return false;
+  return list.some((p) => p.startsWith('*.')
+    ? (h === p.slice(2) || h.endsWith('.' + p.slice(2)))
+    : h === p);
+}
+
+async function checkSender(sender) {
+  let allowlist = [];
+  try { ({ allowlist } = await chrome.storage.local.get({ allowlist: [] })); } catch (e) { /* default */ }
+  let host = '';
+  try { host = new URL(sender.url || (sender.tab && sender.tab.url) || '').hostname; } catch (e) { /* none */ }
+  return isHostAllowed(host, allowlist)
+    ? null
+    : { ok: false, error: 'site not in allowlist: ' + (host || '(unknown)') };
+}
+
 function applyToGroup(groupId, title, color) {
   if (groupId === undefined || groupId === NO_GROUP) {
     return Promise.resolve({ ok: false, error: 'tab is not in a tab group' });
@@ -59,16 +98,23 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     case 'setGroupTitle': {
       const tab = sender.tab;
       if (!tab) { sendResponse({ ok: false, error: 'no sender tab' }); return false; }
-      applyToGroup(tab.groupId, msg.title, msg.color).then(sendResponse);
+      checkSender(sender)
+        .then((denied) => denied || applyToGroup(tab.groupId, msg.title, msg.color))
+        .then(sendResponse);
       return true;
     }
     case 'getGroupTitle': {
       const tab = sender.tab;
       if (!tab) { sendResponse({ ok: false, error: 'no sender tab' }); return false; }
-      readGroup(tab.groupId).then(sendResponse);
+      checkSender(sender)
+        .then((denied) => denied || readGroup(tab.groupId))
+        .then(sendResponse);
       return true;
     }
     case 'setGroupTitleForTab': {
+      // Popup-only: a message from a content script (sender.tab set) could
+      // otherwise target any tab and bypass the allowlist.
+      if (sender.tab) { sendResponse({ ok: false, error: 'popup-only message' }); return false; }
       chrome.tabs.get(msg.tabId)
         .then((t) => applyToGroup(t.groupId, msg.title, msg.color))
         .then(sendResponse)
@@ -76,6 +122,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return true;
     }
     case 'getGroupTitleForTab': {
+      // Popup-only: a message from a content script (sender.tab set) could
+      // otherwise target any tab and bypass the allowlist.
+      if (sender.tab) { sendResponse({ ok: false, error: 'popup-only message' }); return false; }
       chrome.tabs.get(msg.tabId)
         .then((t) => readGroup(t.groupId))
         .then(sendResponse)

@@ -23,6 +23,17 @@
   #status { margin-top: 10px; font-size: 11px; min-height: 15px; }
   .err { color: #c0392b; }
   .ok  { color: #1e7a3c; }
+  details { margin-top: 12px; }
+  summary { cursor: pointer; font-size: 12px; }
+  .hint { font-size: 11px; opacity: .7; margin: 6px 0; }
+  textarea {
+    width: 100%; box-sizing: border-box; font: 12px/1.4 ui-monospace, Menlo, monospace;
+    padding: 6px 8px; border-radius: 6px; resize: vertical;
+    border: 1px solid rgba(128,128,128,.45); background: transparent; color: inherit;
+  }
+  .row { display: flex; gap: 6px; }
+  .row button { margin-top: 6px; }
+  button.secondary { background: transparent; color: inherit; border-color: rgba(128,128,128,.45); }
   #version { margin-top: 6px; font-size: 10px; opacity: .5; text-align: right; }
 </style>
 </head>
@@ -52,6 +63,18 @@
     <input id="auto" type="checkbox" style="width:auto;margin:0;">
     <span>Auto-name new "Claude" groups from the site</span>
   </label>
+
+  <details id="allowBox">
+    <summary>Allowed sites</summary>
+    <p class="hint">Sites whose pages may rename their group via the session snippet.
+      One per line; <code>*.example.com</code> covers subdomains.
+      Leave empty to allow every site (default).</p>
+    <textarea id="allowlist" rows="5" spellcheck="false" placeholder="(empty = every site)"></textarea>
+    <div class="row">
+      <button id="addSite" type="button" class="secondary">Add this site</button>
+      <button id="saveAllow" type="button">Save</button>
+    </div>
+  </details>
 
   <div id="status"></div>
   <div id="version"></div>

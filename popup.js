@@ -9,6 +9,7 @@ const applyEl  = document.getElementById('apply');
 const statusEl = document.getElementById('status');
 
 let activeTabId = null;
+let activeTabUrl = '';
 
 function setStatus(text, cls) {
   statusEl.textContent = text;
@@ -19,6 +20,7 @@ async function init() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab) { setStatus('No active tab.', 'err'); applyEl.disabled = true; return; }
   activeTabId = tab.id;
+  activeTabUrl = tab.url || '';
 
   const res = await chrome.runtime.sendMessage({ type: 'getGroupTitleForTab', tabId: tab.id });
   if (!res || !res.ok) {
@@ -57,6 +59,37 @@ chrome.storage.local.get({ autoLabel: true }).then(({ autoLabel }) => {
 autoEl.addEventListener('change', () => {
   chrome.storage.local.set({ autoLabel: autoEl.checked });
   setStatus(autoEl.checked ? 'Auto-naming on' : 'Auto-naming off', 'ok');
+});
+
+const allowEl = document.getElementById('allowlist');
+
+function parseAllowlist(text) {
+  return text.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean);
+}
+
+chrome.storage.local.get({ allowlist: [] }).then(({ allowlist }) => {
+  allowEl.value = (allowlist || []).join('\n');
+  if (allowlist && allowlist.length) document.getElementById('allowBox').open = true;
+});
+
+document.getElementById('saveAllow').addEventListener('click', async () => {
+  const allowlist = parseAllowlist(allowEl.value);
+  await chrome.storage.local.set({ allowlist });
+  allowEl.value = allowlist.join('\n');
+  setStatus(allowlist.length ? 'Allowlist saved (' + allowlist.length + ' sites)' : 'Allowlist cleared - every site allowed', 'ok');
+});
+
+document.getElementById('addSite').addEventListener('click', () => {
+  let host = '';
+  try {
+    const u = new URL(activeTabUrl);
+    if (u.protocol === 'http:' || u.protocol === 'https:') host = u.hostname;
+  } catch (e) { /* not a web page */ }
+  if (!host) { setStatus('Active tab is not a web page', 'err'); return; }
+  const list = parseAllowlist(allowEl.value);
+  if (!list.includes(host)) list.push(host);
+  allowEl.value = list.join('\n');
+  setStatus('Added ' + host + ' - click Save', '');
 });
 
 document.getElementById('version').textContent = 'v' + chrome.runtime.getManifest().version;
