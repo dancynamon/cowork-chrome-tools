@@ -37,6 +37,7 @@ function createChrome({ manifestVersion = '0.0.0' } = {}) {
   const groups = new Map(); // id -> {id, windowId, title, color}
   const tabs = new Map();   // id -> {id, windowId, groupId, index, url}
   const updates = [];       // log of tabGroups.update calls
+  const sent = [];          // log of tabs.sendMessage calls
   let nextGroupId = 100;
 
   const chrome = {
@@ -64,10 +65,15 @@ function createChrome({ manifestVersion = '0.0.0' } = {}) {
         if (!tabs.has(id)) throw new Error('No tab with id: ' + id + '.');
         return { ...tabs.get(id) };
       },
-      async query({ groupId }) {
-        return [...tabs.values()].filter((t) => t.groupId === groupId).map((t) => ({ ...t }));
-      }
+      async query(q) {
+        return [...tabs.values()]
+          .filter((t) => (q.groupId === undefined || t.groupId === q.groupId) &&
+                         (q.active === undefined || !!t.active === q.active))
+          .map((t) => ({ ...t }));
+      },
+      async sendMessage(tabId, msg) { sent.push({ tabId, msg }); }
     },
+    commands: { onCommand: event() },
     storage: { local: storageArea(), session: storageArea() },
     runtime: {
       onMessage: event(),
@@ -78,14 +84,15 @@ function createChrome({ manifestVersion = '0.0.0' } = {}) {
     _groups: groups,
     _tabs: tabs,
     _updates: updates,
+    _sent: sent,
     _addGroup({ windowId = 1, title = '', color = 'grey' } = {}) {
       const id = nextGroupId++;
       groups.set(id, { id, windowId, title, color });
       return id;
     },
-    _addTab({ id, groupId, url, windowId = 1, index }) {
+    _addTab({ id, groupId = -1, url, windowId = 1, index, active = false }) {
       const i = index !== undefined ? index : [...tabs.values()].filter((t) => t.groupId === groupId).length;
-      tabs.set(id, { id, windowId, groupId, index: i, url });
+      tabs.set(id, { id, windowId, groupId, index: i, url, active });
     },
     _removeGroup(id) { groups.delete(id); },
     // Someone other than this extension (Claude in Chrome, you in Chrome's UI)
