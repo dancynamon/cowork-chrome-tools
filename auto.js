@@ -84,6 +84,8 @@ async function rememberTitle(groupId, title) {
 
 async function maybeLabelGroup(groupId) {
   if (groupId === undefined || groupId === chrome.tabGroups.TAB_GROUP_ID_NONE) return;
+  // A remembered title (restore.js, opt-in) outranks a site guess.
+  if (typeof maybeRestoreTitle === 'function' && await maybeRestoreTitle(groupId)) return;
   if (!(await isEnabled())) return;
 
   let group;

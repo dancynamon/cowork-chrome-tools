@@ -11,9 +11,10 @@
 // in the tab strip without modifying page content. It is not exposed to page
 // JavaScript, which is why this extension exists.
 
-// Automatic site-based labeling lives in auto.js so this file stays about the
-// explicit set/get protocol.
-try { importScripts('auto.js'); } catch (e) { console.warn('auto.js not loaded:', e); }
+// Automatic site-based labeling lives in auto.js, and restoring a title after
+// Claude in Chrome recreates its group in restore.js, so this file stays about
+// the explicit set/get protocol.
+try { importScripts('auto.js', 'restore.js'); } catch (e) { console.warn('auto.js/restore.js not loaded:', e); }
 
 const NO_GROUP = chrome.tabGroups ? chrome.tabGroups.TAB_GROUP_ID_NONE : -1;
 
@@ -77,6 +78,7 @@ function applyToGroup(groupId, title, color) {
   return chrome.tabGroups.update(groupId, props)
     .then(async (g) => {
       await forgetAutoTitle(g.id);
+      if (typeof rememberExplicitTitle === 'function') await rememberExplicitTitle(g);
       return { ok: true, groupId: g.id, title: g.title, color: g.color };
     })
     .catch((e) => ({ ok: false, error: String(e && e.message ? e.message : e) }));

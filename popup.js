@@ -61,6 +61,16 @@ autoEl.addEventListener('change', () => {
   setStatus(autoEl.checked ? 'Auto-naming on' : 'Auto-naming off', 'ok');
 });
 
+const restoreEl = document.getElementById('restore');
+
+chrome.storage.local.get({ restoreTitle: false }).then(({ restoreTitle }) => {
+  restoreEl.checked = restoreTitle;
+});
+restoreEl.addEventListener('change', () => {
+  chrome.storage.local.set({ restoreTitle: restoreEl.checked });
+  setStatus(restoreEl.checked ? 'Title restore on' : 'Title restore off', 'ok');
+});
+
 const allowEl = document.getElementById('allowlist');
 
 function parseAllowlist(text) {
