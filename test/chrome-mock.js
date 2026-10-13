@@ -52,7 +52,9 @@ function createChrome({ manifestVersion = '0.0.0' } = {}) {
         if (!groups.has(id)) throw new Error('No group with id: ' + id + '.');
         const g = Object.assign(groups.get(id), props);
         updates.push({ id, ...props });
-        return { ...g };
+        const snapshot = { ...g };
+        setTimeout(() => chrome.tabGroups.onUpdated.dispatch({ ...snapshot }), 0);
+        return snapshot;
       }
     },
     tabs: {
@@ -85,7 +87,15 @@ function createChrome({ manifestVersion = '0.0.0' } = {}) {
       const i = index !== undefined ? index : [...tabs.values()].filter((t) => t.groupId === groupId).length;
       tabs.set(id, { id, windowId, groupId, index: i, url });
     },
-    _removeGroup(id) { groups.delete(id); }
+    _removeGroup(id) { groups.delete(id); },
+    // Someone other than this extension (Claude in Chrome, you in Chrome's UI)
+    // retitles a group: Chrome fires tabGroups.onUpdated.
+    _retitle(id, title) {
+      Object.assign(groups.get(id), { title });
+      chrome.tabGroups.onUpdated.dispatch({ ...groups.get(id) });
+    },
+    // Let queued event handlers and storage writes settle.
+    _settle: () => new Promise((r) => setTimeout(r, 20))
   };
   return chrome;
 }

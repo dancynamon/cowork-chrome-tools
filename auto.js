@@ -121,9 +121,11 @@ async function maybeLabelGroup(groupId) {
   const pick = dominantLabel(tabs.map((t) => t.url || t.pendingUrl || ''), base);
   if (!pick || pick.label === base) return;
 
+  // Record the label first: restore.js must see it as ours when the resulting
+  // tabGroups.onUpdated arrives, or it would remember "QBO" as a real name.
+  await rememberTitle(groupId, pick.label);
   try {
     await chrome.tabGroups.update(groupId, { title: prefix + pick.label, color: pick.color });
-    await rememberTitle(groupId, pick.label);
   } catch (e) { /* group closed mid-flight */ }
 }
 

@@ -116,31 +116,38 @@ test('popup-only messages are refused from content scripts, allowed from the pop
   assert.equal(chrome._groups.get(g).title, 'Inbox');
 });
 
-test('shouldRestore decision table', () => {
+test('pickRestore decision table', () => {
   const { ctx } = loadBackground();
-  const rec = { groupId: 1, title: 'Kiefer Pallet', color: 'blue' };
-  const base = { currentTitle: 'Claude', groupId: 2, record: rec, restores: 0, oldGroupAlive: false };
-  assert.equal(ctx.shouldRestore(base), true);
-  assert.equal(ctx.shouldRestore({ ...base, record: undefined }), false);
-  assert.equal(ctx.shouldRestore({ ...base, currentTitle: 'Shopify' }), false);
-  assert.equal(ctx.shouldRestore({ ...base, oldGroupAlive: true }), false); // parallel group
-  assert.equal(ctx.shouldRestore({ ...base, groupId: 1 }), false);          // same group reset
-  assert.equal(ctx.shouldRestore({ ...base, restores: 1 }), true);          // Claude re-titled once more
-  assert.equal(ctx.shouldRestore({ ...base, restores: 2 }), false);         // stop fighting
+  const kiefer = { groupId: 1, title: 'Kiefer Pallet', color: 'blue' };
+  const boxes = { groupId: 3, title: 'Box Prices', color: 'green' };
+  const base = { currentTitle: '⌛Claude', groupId: 2, records: [kiefer], restores: 0, aliveIds: new Set() };
+  assert.equal(ctx.pickRestore(base).title, 'Kiefer Pallet');
+  assert.equal(ctx.pickRestore({ ...base, records: undefined }), null);
+  assert.equal(ctx.pickRestore({ ...base, currentTitle: 'Shopify' }), null);
+  assert.equal(ctx.pickRestore({ ...base, aliveIds: new Set([1]) }), null);        // parallel group
+  assert.equal(ctx.pickRestore({ ...base, groupId: 1 }), null);                     // same group, never restored
+  // Most recent name whose group is gone wins; open groups are skipped.
+  assert.equal(ctx.pickRestore({ ...base, records: [boxes, kiefer], aliveIds: new Set([3]) }).title, 'Kiefer Pallet');
+  assert.equal(ctx.pickRestore({ ...base, records: [boxes, kiefer] }).title, 'Box Prices');
+  // Claude in Chrome reset a group we restored: once more, then stop.
+  const restored = { ...kiefer, groupId: 2 };
+  assert.equal(ctx.pickRestore({ ...base, records: [restored], restores: 1 }).title, 'Kiefer Pallet');
+  assert.equal(ctx.pickRestore({ ...base, records: [restored], restores: 2 }), null);
 });
 
-test('restore: recreated "Claude" group gets the last session title back (when enabled)', async () => {
+test('restore (on by default): a new "⌛Claude" group gets the session name back', async () => {
   const { ctx, chrome } = loadBackground();
-  await chrome.storage.local.set({ restoreTitle: true });
   const old = chrome._addGroup({ windowId: 5, title: 'Claude' });
   await sendMessage(chrome, { type: 'setGroupTitle', title: 'Kiefer Pallet', color: 'blue' },
     { tab: { id: 1, groupId: old }, url: 'https://example.com/' });
+  chrome._retitle(old, '⌛Kiefer Pallet'); // Claude in Chrome adds its status emoji
+  await chrome._settle();
 
   chrome._removeGroup(old);
-  const fresh = chrome._addGroup({ windowId: 5, title: 'Claude' });
+  const fresh = chrome._addGroup({ windowId: 5, title: '⌛Claude' });
   chrome._addTab({ id: 2, groupId: fresh, url: 'https://admin.shopify.com/' });
   await ctx.maybeLabelGroup(fresh);
-  assert.equal(chrome._groups.get(fresh).title, 'Kiefer Pallet');
+  assert.equal(chrome._groups.get(fresh).title, '⌛Kiefer Pallet');
   assert.equal(chrome._groups.get(fresh).color, 'blue');
 
   // A group in another window is not affected; it gets the site label.
@@ -150,11 +157,39 @@ test('restore: recreated "Claude" group gets the last session title back (when e
   assert.equal(chrome._groups.get(other).title, 'Shopify');
 });
 
-test('restore: off by default, and never applied while the named group still exists', async () => {
+test('restore: names Claude in Chrome itself gave the group are remembered too', async () => {
+  const { chrome } = loadBackground();
+  const old = chrome._addGroup({ windowId: 5, title: '' });
+  chrome._retitle(old, '⌛Cowork Tab Group Namer'); // session title from Claude in Chrome
+  await chrome._settle();
+  chrome._removeGroup(old);
+
+  const fresh = chrome._addGroup({ windowId: 5, title: '' });
+  chrome._retitle(fresh, '⌛Claude');
+  await chrome._settle();
+  assert.equal(chrome._groups.get(fresh).title, '⌛Cowork Tab Group Namer');
+});
+
+test('restore: site labels are not remembered as names', async () => {
   const { ctx, chrome } = loadBackground();
+  const old = chrome._addGroup({ windowId: 5, title: 'Claude' });
+  chrome._addTab({ id: 1, groupId: old, url: 'https://qbo.intuit.com/' });
+  await ctx.maybeLabelGroup(old);
+  await chrome._settle();
+  assert.equal(chrome._groups.get(old).title, 'QBO');
+  chrome._removeGroup(old);
+
+  const fresh = chrome._addGroup({ windowId: 5, title: 'Claude' });
+  assert.equal(await ctx.maybeRestoreTitle(fresh), false);
+});
+
+test('restore: can be turned off, and never copies a name whose group is still open', async () => {
+  const { ctx, chrome } = loadBackground();
+  await chrome.storage.local.set({ restoreTitle: false });
   const old = chrome._addGroup({ windowId: 5 });
   await sendMessage(chrome, { type: 'setGroupTitle', title: 'Kiefer Pallet' },
     { tab: { id: 1, groupId: old }, url: 'https://example.com/' });
+  await chrome._settle();
   chrome._removeGroup(old);
   const fresh = chrome._addGroup({ windowId: 5, title: 'Claude' });
   assert.equal(await ctx.maybeRestoreTitle(fresh), false); // disabled
@@ -163,6 +198,7 @@ test('restore: off by default, and never applied while the named group still exi
   const named = chrome._addGroup({ windowId: 7 });
   await sendMessage(chrome, { type: 'setGroupTitle', title: 'Box Prices' },
     { tab: { id: 2, groupId: named }, url: 'https://example.com/' });
+  await chrome._settle();
   const parallel = chrome._addGroup({ windowId: 7, title: 'Claude' });
   assert.equal(await ctx.maybeRestoreTitle(parallel), false);
   assert.equal(chrome._groups.get(parallel).title, 'Claude');

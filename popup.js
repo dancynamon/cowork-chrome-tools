@@ -63,8 +63,8 @@ autoEl.addEventListener('change', () => {
 
 const restoreEl = document.getElementById('restore');
 
-chrome.storage.local.get({ restoreTitle: false }).then(({ restoreTitle }) => {
-  restoreEl.checked = restoreTitle;
+chrome.storage.local.get({ restoreTitle: true }).then(({ restoreTitle }) => {
+  restoreEl.checked = restoreTitle !== false;
 });
 restoreEl.addEventListener('change', () => {
   chrome.storage.local.set({ restoreTitle: restoreEl.checked });

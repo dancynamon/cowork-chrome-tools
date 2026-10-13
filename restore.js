@@ -1,42 +1,69 @@
-// Cowork Tab Group Namer - restore a title when Claude in Chrome recreates its group
+// Cowork Tab Group Namer - put a group's name back when Claude in Chrome loses it
 //
-// Off by default (storage.local 'restoreTitle', checkbox in the popup).
+// On by default (storage.local 'restoreTitle', checkbox in the popup).
 //
-// Claude in Chrome sometimes throws its tab group away and makes a new one
-// titled "Claude" mid-task, losing the name a session (or you, in the popup)
-// gave it. With this on, the last explicitly set title in each window is
-// remembered, and a NEW group in that window that comes up with a default title
-// gets it back - but only once the group that carried that title is gone, so a
-// second, parallel group is never mislabeled as the first.
+// When a Cowork session comes back to the browser, Claude in Chrome often
+// makes a fresh tab group titled "Claude" (or "⌛Claude"), and the name the
+// group had is gone. This module remembers the recent real names in each
+// window - set by a session, typed in the popup, renamed in Chrome, or given by
+// Claude in Chrome itself - and gives a NEW default-titled group in that window
+// the most recent name whose group has since closed. A name whose group is
+// still open is never copied, so a second, parallel group is not mislabeled.
 //
 // State lives in storage.session: it is per browser run, like window ids.
 
-const MAX_RESTORES_PER_GROUP = 2; // Claude may set "Claude" once more after we restore
+const MAX_RESTORES_PER_GROUP = 2;  // Claude in Chrome may re-title once more after we restore
+const MAX_TITLES_PER_WINDOW = 5;
 
 async function restoreEnabled() {
   try {
-    const { restoreTitle } = await chrome.storage.local.get({ restoreTitle: false });
-    return restoreTitle === true;
+    const { restoreTitle } = await chrome.storage.local.get({ restoreTitle: true });
+    return restoreTitle !== false;
   } catch (e) { return false; }
 }
 
-// Called by background.js after a successful explicit rename.
-async function rememberExplicitTitle(group) {
-  if (!group || isDefaultTitle(group.title)) return;
-  try {
-    const { lastTitles } = await chrome.storage.session.get({ lastTitles: {} });
-    lastTitles[String(group.windowId)] = { groupId: group.id, title: baseTitle(group.title), color: group.color };
-    await chrome.storage.session.set({ lastTitles });
-  } catch (e) { /* storage.session unavailable */ }
+// storage.session read-modify-writes from overlapping events must not interleave.
+let queue = Promise.resolve();
+function serialized(fn) {
+  const run = queue.then(fn);
+  queue = run.catch(() => {});
+  return run;
 }
 
-// Pure decision, separated for tests. `record` is the window's remembered
-// title, `restores` how often this group was already restored, `oldGroupAlive`
-// whether record.groupId still exists.
-function shouldRestore({ currentTitle, groupId, record, restores, oldGroupAlive }) {
-  if (!record || !isDefaultTitle(currentTitle)) return false;
-  if (restores > 0) return restores < MAX_RESTORES_PER_GROUP; // Claude reset our restore
-  return record.groupId !== groupId && !oldGroupAlive;
+// Remember `group`'s current name as the most recent one for its window.
+// Default titles and this extension's own site labels are not names.
+function rememberName(group) {
+  if (!group || isDefaultTitle(group.title)) return Promise.resolve();
+  return serialized(async () => {
+    const { lastTitles, autoTitles } =
+      await chrome.storage.session.get({ lastTitles: {}, autoTitles: {} });
+    const title = baseTitle(group.title);
+    if (autoTitles[String(group.id)] === title) return;
+
+    const key = String(group.windowId);
+    const list = (Array.isArray(lastTitles[key]) ? lastTitles[key] : [])
+      .filter((r) => r.groupId !== group.id);
+    list.unshift({ groupId: group.id, title, color: group.color });
+    lastTitles[key] = list.slice(0, MAX_TITLES_PER_WINDOW);
+    await chrome.storage.session.set({ lastTitles });
+  }).catch(() => { /* storage.session unavailable */ });
+}
+
+// Called by background.js after a successful rename from a session or the popup.
+function rememberExplicitTitle(group) { return rememberName(group); }
+
+// Pure decision, separated for tests. Returns the record to restore, or null.
+//   records   this window's remembered names, most recent first
+//   restores  how often this group was already restored
+//   aliveIds  Set of group ids that still exist
+function pickRestore({ currentTitle, groupId, records, restores, aliveIds }) {
+  if (!isDefaultTitle(currentTitle) || !Array.isArray(records)) return null;
+  if (restores > 0) {
+    // Claude in Chrome reset a title we restored: put it back, but do not fight.
+    if (restores >= MAX_RESTORES_PER_GROUP) return null;
+    return records.find((r) => r.groupId === groupId) || null;
+  }
+  return records.find((r) => r.groupId !== groupId && !aliveIds.has(r.groupId)) || null;
 }
 
 const restoring = new Set(); // onUpdated and auto.js can both ask at once
@@ -51,17 +78,20 @@ async function maybeRestoreTitle(groupId) {
 async function restoreGroup(groupId) {
   let group;
   try { group = await chrome.tabGroups.get(groupId); } catch (e) { return false; }
+  if (!isDefaultTitle(group.title)) return false;
 
   const { lastTitles, restoredGroups } =
     await chrome.storage.session.get({ lastTitles: {}, restoredGroups: {} });
-  const record = lastTitles[String(group.windowId)];
-  const restores = restoredGroups[String(groupId)] || 0;
+  const records = lastTitles[String(group.windowId)];
+  if (!Array.isArray(records) || records.length === 0) return false;
 
-  let oldGroupAlive = false;
-  if (record && record.groupId !== groupId) {
-    try { await chrome.tabGroups.get(record.groupId); oldGroupAlive = true; } catch (e) { /* gone */ }
+  const aliveIds = new Set();
+  for (const r of records) {
+    try { await chrome.tabGroups.get(r.groupId); aliveIds.add(r.groupId); } catch (e) { /* gone */ }
   }
-  if (!shouldRestore({ currentTitle: group.title, groupId, record, restores, oldGroupAlive })) return false;
+  const restores = restoredGroups[String(groupId)] || 0;
+  const record = pickRestore({ currentTitle: group.title, groupId, records, restores, aliveIds });
+  if (!record) return false;
 
   try {
     const props = { title: splitStatus(group.title).prefix + record.title };
@@ -69,14 +99,23 @@ async function restoreGroup(groupId) {
     await chrome.tabGroups.update(groupId, props);
   } catch (e) { return false; }
 
-  restoredGroups[String(groupId)] = restores + 1;
-  lastTitles[String(group.windowId)] = { ...record, groupId };
-  await chrome.storage.session.set({ lastTitles, restoredGroups });
+  await serialized(async () => {
+    const s = await chrome.storage.session.get({ lastTitles: {}, restoredGroups: {} });
+    s.restoredGroups[String(groupId)] = restores + 1;
+    // The name now lives on this group; move its record here.
+    const key = String(group.windowId);
+    const list = (s.lastTitles[key] || []).filter((r) => r.groupId !== groupId && r.groupId !== record.groupId);
+    list.unshift({ ...record, groupId });
+    s.lastTitles[key] = list.slice(0, MAX_TITLES_PER_WINDOW);
+    await chrome.storage.session.set(s);
+  });
   return true;
 }
 
-// Claude in Chrome usually creates the group and then titles it "Claude"; catch
-// that second step (auto.js handles onCreated and calls maybeRestoreTitle first).
+// A group that turns "Claude" gets its name back; a group that gets a real name
+// (from anyone) has it remembered. auto.js also calls maybeRestoreTitle first on
+// onCreated, so a group created already titled is covered too.
 chrome.tabGroups.onUpdated.addListener((g) => {
   if (isDefaultTitle(g.title)) maybeRestoreTitle(g.id);
+  else rememberName(g);
 });
