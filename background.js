@@ -16,6 +16,9 @@
 // the explicit set/get protocol.
 try { importScripts('auto.js', 'restore.js'); } catch (e) { console.warn('auto.js/restore.js not loaded:', e); }
 
+// Gmail link copier: routes its keyboard shortcuts to the Gmail tab.
+try { importScripts('gmail/background.js'); } catch (e) { console.warn('gmail/background.js not loaded:', e); }
+
 const NO_GROUP = chrome.tabGroups ? chrome.tabGroups.TAB_GROUP_ID_NONE : -1;
 
 // An explicit rename (session or popup) outranks auto-labeling: forget that this

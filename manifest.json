@@ -1,15 +1,22 @@
 {
   "manifest_version": 3,
-  "name": "Cowork Tab Group Namer",
+  "name": "Cowork Chrome Tools",
   "version": "1.4.0",
-  "description": "Name the Chrome tab group you are working in - automatically from the site in the group, from a Claude session, or by hand from the toolbar popup. Never touches any page's document.title.",
-  "permissions": ["tabGroups", "tabs", "storage"],
-  "host_permissions": ["<all_urls>"],
+  "description": "Claude Cowork helpers for Chrome: name the tab group you are working in (from a session, the site, or the popup; never touches document.title), and copy Gmail links or a structured Cowork prompt from any message.",
+  "permissions": [
+    "tabGroups",
+    "tabs",
+    "storage",
+    "clipboardWrite"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
   "background": {
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "Name this tab group",
+    "default_title": "Cowork Chrome Tools",
     "default_popup": "popup.html"
   },
   "commands": {
@@ -18,15 +25,45 @@
         "default": "Ctrl+Shift+G",
         "mac": "Command+Shift+G"
       },
-      "description": "Open the tab group namer popup"
+      "description": "Open the Cowork Chrome Tools popup"
+    },
+    "copy-message-link": {
+      "suggested_key": {
+        "default": "Alt+Shift+C",
+        "mac": "Alt+Shift+C"
+      },
+      "description": "Gmail: copy link to the focused message"
+    },
+    "copy-thread-link": {
+      "suggested_key": {
+        "default": "Alt+Shift+T",
+        "mac": "Alt+Shift+T"
+      },
+      "description": "Gmail: copy link to the current thread"
     }
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_start",
       "all_frames": false
+    },
+    {
+      "matches": [
+        "https://mail.google.com/*"
+      ],
+      "js": [
+        "gmail/content.js"
+      ],
+      "css": [
+        "gmail/styles.css"
+      ],
+      "run_at": "document_idle"
     }
   ]
 }

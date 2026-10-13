@@ -34,10 +34,24 @@
   .row { display: flex; gap: 6px; }
   .row button { margin-top: 6px; }
   button.secondary { background: transparent; color: inherit; border-color: rgba(128,128,128,.45); }
+  hr { border: 0; border-top: 1px solid rgba(128,128,128,.3); margin: 12px 0; }
+  #gmail .row button { margin-top: 0; font-weight: 500; }
+  #gmailStatus { font-size: 11px; min-height: 15px; margin-top: 4px; }
   #version { margin-top: 6px; font-size: 10px; opacity: .5; text-align: right; }
 </style>
 </head>
 <body>
+  <section id="gmail" hidden>
+    <h1>Gmail</h1>
+    <div class="row">
+      <button id="gmailMsg" type="button" class="secondary">🔗 Message link</button>
+      <button id="gmailThread" type="button" class="secondary">🧵 Thread link</button>
+    </div>
+    <div id="gmailStatus"></div>
+    <p class="hint">Alt+Shift+C message, Alt+Shift+T thread. ✨ on a message copies a Cowork prompt.</p>
+    <hr>
+  </section>
+
   <h1>Name this tab group</h1>
 
   <label for="title">Group name</label>
@@ -85,5 +99,6 @@
   <div id="version"></div>
 
   <script src="popup.js"></script>
+  <script src="gmail/popup.js"></script>
 </body>
 </html>
