@@ -1,0 +1,8 @@
+{
+  "name": "cowork-tab-group-namer",
+  "private": true,
+  "description": "Dev-only: test runner for the extension. The extension version lives in manifest.json.",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}
