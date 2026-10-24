@@ -59,10 +59,11 @@ function rememberName(group) {
 function rememberExplicitTitle(group) { return rememberName(group); }
 
 // Pure decision, separated for tests. Returns the record to restore, or null.
-//   records   this window's remembered names, most recent first
-//   restores  how often this group was already restored
-//   aliveIds  Set of group ids that still exist
-function pickRestore({ currentTitle, groupId, records, restores, aliveIds }) {
+//   records     this window's remembered names, most recent first
+//   restores    how often this group was already restored
+//   aliveIds    Set of group ids that still exist
+//   openTitles  Set of names open groups carry right now, in any window
+function pickRestore({ currentTitle, groupId, records, restores, aliveIds, openTitles = new Set() }) {
   if (!isRestoreTrigger(currentTitle) || !Array.isArray(records)) return null;
   if (restores > 0) {
     // Claude in Chrome reset a title we restored: put it back, but do not fight.
@@ -73,7 +74,7 @@ function pickRestore({ currentTitle, groupId, records, restores, aliveIds }) {
   // used to stamp the same name on every new "Claude" group).
   const aliveTitles = new Set(records.filter((r) => aliveIds.has(r.groupId)).map((r) => r.title));
   return records.find((r) => r.groupId !== groupId && !aliveIds.has(r.groupId)
-    && !aliveTitles.has(r.title)) || null;
+    && !aliveTitles.has(r.title) && !openTitles.has(r.title)) || null;
 }
 
 const restoring = new Set(); // onUpdated and auto.js can both ask at once
@@ -85,42 +86,47 @@ async function maybeRestoreTitle(groupId) {
   try { return await restoreGroup(groupId); } finally { restoring.delete(groupId); }
 }
 
-async function restoreGroup(groupId) {
-  let group;
-  try { group = await chrome.tabGroups.get(groupId); } catch (e) { return false; }
-  if (!isRestoreTrigger(group.title)) return false;
+// Read, decide and write in one serialized step: two "Claude" groups restored
+// at once would otherwise both read the same closed name before either moves it.
+function restoreGroup(groupId) {
+  return serialized(async () => {
+    let group;
+    try { group = await chrome.tabGroups.get(groupId); } catch (e) { return false; }
+    if (!isRestoreTrigger(group.title)) return false;
 
-  const { lastTitles, restoredGroups } =
-    await chrome.storage.session.get({ lastTitles: {}, restoredGroups: {} });
-  const records = lastTitles[String(group.windowId)];
-  if (!Array.isArray(records) || records.length === 0) return false;
-
-  const aliveIds = new Set();
-  for (const r of records) {
-    try { await chrome.tabGroups.get(r.groupId); aliveIds.add(r.groupId); } catch (e) { /* gone */ }
-  }
-  const restores = restoredGroups[String(groupId)] || 0;
-  const record = pickRestore({ currentTitle: group.title, groupId, records, restores, aliveIds });
-  if (!record) return false;
-
-  try {
-    const props = { title: splitStatus(group.title).prefix + record.title };
-    if (record.color) props.color = record.color;
-    await chrome.tabGroups.update(groupId, props);
-  } catch (e) { return false; }
-
-  await serialized(async () => {
     const s = await chrome.storage.session.get({ lastTitles: {}, restoredGroups: {} });
+    const key = String(group.windowId);
+    const records = s.lastTitles[key];
+    if (!Array.isArray(records) || records.length === 0) return false;
+
+    const aliveIds = new Set();
+    for (const r of records) {
+      try { await chrome.tabGroups.get(r.groupId); aliveIds.add(r.groupId); } catch (e) { /* gone */ }
+    }
+    let openTitles = new Set();
+    try {
+      openTitles = new Set((await chrome.tabGroups.query({}))
+        .filter((g) => g.id !== groupId).map((g) => baseTitle(g.title)));
+    } catch (e) { /* records alone still guard this window */ }
+    const restores = s.restoredGroups[String(groupId)] || 0;
+    const record = pickRestore({ currentTitle: group.title, groupId, records, restores, aliveIds, openTitles });
+    if (!record) return false;
+
+    try {
+      const props = { title: splitStatus(group.title).prefix + record.title };
+      if (record.color) props.color = record.color;
+      await chrome.tabGroups.update(groupId, props);
+    } catch (e) { return false; }
+
     s.restoredGroups[String(groupId)] = restores + 1;
     // The name now lives on this group; move its record here.
-    const key = String(group.windowId);
-    const list = (s.lastTitles[key] || []).filter((r) => r.groupId !== groupId
+    const list = records.filter((r) => r.groupId !== groupId
       && r.groupId !== record.groupId && r.title !== record.title);
     list.unshift({ ...record, groupId });
     s.lastTitles[key] = list.slice(0, MAX_TITLES_PER_WINDOW);
     await chrome.storage.session.set(s);
-  });
-  return true;
+    return true;
+  }).catch(() => false);
 }
 
 // A group titled "Claude" gets its name back; a group that gets a real name

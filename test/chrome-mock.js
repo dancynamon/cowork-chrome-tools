@@ -49,6 +49,11 @@ function createChrome({ manifestVersion = '0.0.0' } = {}) {
         if (!groups.has(id)) throw new Error('No group with id: ' + id + '.');
         return { ...groups.get(id) };
       },
+      async query(q = {}) {
+        return [...groups.values()]
+          .filter((g) => q.windowId === undefined || g.windowId === q.windowId)
+          .map((g) => ({ ...g }));
+      },
       async update(id, props) {
         if (!groups.has(id)) throw new Error('No group with id: ' + id + '.');
         const g = Object.assign(groups.get(id), props);

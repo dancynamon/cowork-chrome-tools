@@ -232,3 +232,36 @@ test('restore: can be turned off, and never copies a name whose group is still o
   assert.equal(await ctx.maybeRestoreTitle(parallel), false);
   assert.equal(chrome._groups.get(parallel).title, 'Claude');
 });
+
+test('restore: two "Claude" groups created at once do not both get the same name', async () => {
+  const { ctx, chrome } = loadBackground();
+  const old = chrome._addGroup({ windowId: 5 });
+  await sendMessage(chrome, { type: 'setGroupTitle', title: 'Big Blue Collection' },
+    { tab: { id: 1, groupId: old }, url: 'https://example.com/' });
+  await chrome._settle();
+  chrome._removeGroup(old);
+
+  const a = chrome._addGroup({ windowId: 5, title: 'Claude' });
+  const b = chrome._addGroup({ windowId: 5, title: 'Claude' });
+  const results = await Promise.all([ctx.maybeRestoreTitle(a), ctx.maybeRestoreTitle(b)]);
+  await chrome._settle();
+  assert.deepEqual(results.sort(), [false, true]);
+  const titles = [chrome._groups.get(a).title, chrome._groups.get(b).title].sort();
+  assert.deepEqual(titles, ['Big Blue Collection', 'Claude']);
+});
+
+test('restore: a name an open group in another window carries is not copied', async () => {
+  const { ctx, chrome } = loadBackground();
+  const old = chrome._addGroup({ windowId: 5 });
+  await sendMessage(chrome, { type: 'setGroupTitle', title: 'Big Blue Collection' },
+    { tab: { id: 1, groupId: old }, url: 'https://example.com/' });
+  await chrome._settle();
+  chrome._removeGroup(old);
+  const elsewhere = chrome._addGroup({ windowId: 6, title: '' });
+  chrome._retitle(elsewhere, '⌛Big Blue Collection'); // the session reopened in window 6
+  await chrome._settle();
+
+  const fresh = chrome._addGroup({ windowId: 5, title: 'Claude' });
+  assert.equal(await ctx.maybeRestoreTitle(fresh), false);
+  assert.equal(chrome._groups.get(fresh).title, 'Claude');
+});
