@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Cowork Chrome Tools",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Claude Cowork helpers for Chrome: name the tab group you are working in (from a session, the site, or the popup; never touches document.title), and copy Gmail links or a structured Cowork prompt from any message.",
   "permissions": [
     "tabGroups",

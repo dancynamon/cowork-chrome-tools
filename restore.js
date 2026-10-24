@@ -48,7 +48,7 @@ function rememberName(group) {
 
     const key = String(group.windowId);
     const list = (Array.isArray(lastTitles[key]) ? lastTitles[key] : [])
-      .filter((r) => r.groupId !== group.id);
+      .filter((r) => r.groupId !== group.id && r.title !== title); // one record per name
     list.unshift({ groupId: group.id, title, color: group.color });
     lastTitles[key] = list.slice(0, MAX_TITLES_PER_WINDOW);
     await chrome.storage.session.set({ lastTitles });
@@ -69,7 +69,11 @@ function pickRestore({ currentTitle, groupId, records, restores, aliveIds }) {
     if (restores >= MAX_RESTORES_PER_GROUP) return null;
     return records.find((r) => r.groupId === groupId) || null;
   }
-  return records.find((r) => r.groupId !== groupId && !aliveIds.has(r.groupId)) || null;
+  // Never hand out a name an open group already carries (stale duplicate records
+  // used to stamp the same name on every new "Claude" group).
+  const aliveTitles = new Set(records.filter((r) => aliveIds.has(r.groupId)).map((r) => r.title));
+  return records.find((r) => r.groupId !== groupId && !aliveIds.has(r.groupId)
+    && !aliveTitles.has(r.title)) || null;
 }
 
 const restoring = new Set(); // onUpdated and auto.js can both ask at once
@@ -110,7 +114,8 @@ async function restoreGroup(groupId) {
     s.restoredGroups[String(groupId)] = restores + 1;
     // The name now lives on this group; move its record here.
     const key = String(group.windowId);
-    const list = (s.lastTitles[key] || []).filter((r) => r.groupId !== groupId && r.groupId !== record.groupId);
+    const list = (s.lastTitles[key] || []).filter((r) => r.groupId !== groupId
+      && r.groupId !== record.groupId && r.title !== record.title);
     list.unshift({ ...record, groupId });
     s.lastTitles[key] = list.slice(0, MAX_TITLES_PER_WINDOW);
     await chrome.storage.session.set(s);

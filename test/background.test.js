@@ -136,6 +136,16 @@ test('pickRestore decision table', () => {
   assert.equal(ctx.pickRestore({ ...base, records: [restored], restores: 2 }), null);
 });
 
+test('pickRestore: stale duplicate of a name an open group carries is skipped', () => {
+  const { ctx } = loadBackground();
+  const live = { groupId: 5, title: 'Big Blue Collection', color: 'purple' };
+  const stale = { groupId: 4, title: 'Big Blue Collection', color: 'purple' };
+  const older = { groupId: 3, title: 'Box Prices', color: 'green' };
+  const r = ctx.pickRestore({ currentTitle: 'Claude', groupId: 9, records: [live, stale, older],
+    restores: 0, aliveIds: new Set([5]) });
+  assert.equal(r.title, 'Box Prices');
+});
+
 test('restore (on by default): a new "⌛Claude" group gets the session name back', async () => {
   const { ctx, chrome } = loadBackground();
   const old = chrome._addGroup({ windowId: 5, title: 'Claude' });
