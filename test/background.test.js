@@ -61,14 +61,55 @@ test('setGroupTitle reply matches the "OK: groupId=... title=..." contract field
   const { chrome } = loadBackground();
   const g = chrome._addGroup();
   const res = await sendMessage(chrome, { type: 'setGroupTitle', title: 'Box Prices' },
-    { tab: { id: 1, groupId: g }, url: 'https://example.com/' });
+    { tab: { id: 1, groupId: g }, url: 'https://admin.shopify.com/' });
   assert.deepEqual(plain(res), { ok: true, groupId: g, title: 'Box Prices', color: 'grey' });
 });
 
-test('allowlist: empty allows every site (default)', async () => {
+test('allowlist: empty means the built-in work sites only (default)', async () => {
   const { ctx } = loadBackground();
-  assert.equal(ctx.isHostAllowed('anything.example', []), true);
-  assert.equal(ctx.isHostAllowed('anything.example', undefined), true);
+  for (const list of [[], undefined, ['  ', '']]) {
+    assert.equal(ctx.isHostAllowed('anything.example', list), false);
+    assert.equal(ctx.isHostAllowed('mail.google.com', list), true);
+    assert.equal(ctx.isHostAllowed('aquamentor.myshopify.com', list), true);
+    assert.equal(ctx.isHostAllowed('qbo.intuit.com', list), true);
+    assert.equal(ctx.isHostAllowed('partners-portal.maytronics.com', list), true);
+    assert.equal(ctx.isHostAllowed('evilmyshopify.com', list), false);
+    assert.equal(ctx.isHostAllowed('', list), false);
+  }
+});
+
+test('allowlist: "*" allows every site', () => {
+  const { ctx } = loadBackground();
+  assert.equal(ctx.isHostAllowed('anything.example', ['*']), true);
+  assert.equal(ctx.isHostAllowed('anything.example', ['mail.google.com', ' * ']), true);
+});
+
+test('allowlist: every built-in pattern normalizes to itself', () => {
+  const { ctx, get } = loadBackground();
+  for (const p of get('DEFAULT_ALLOWLIST')) assert.equal(ctx.normalizePattern(p), p);
+});
+
+test('allowlist: with no list saved, a random site cannot set or read the group title', async () => {
+  const { chrome } = loadBackground();
+  const g = chrome._addGroup({ title: 'Secret Task' });
+  const sender = { tab: { id: 1, groupId: g }, url: 'https://evil.example/' };
+
+  const set = await sendMessage(chrome, { type: 'setGroupTitle', title: 'pwned' }, sender);
+  assert.deepEqual(plain(set), { ok: false, error: 'site not in allowlist: evil.example' });
+  const get = await sendMessage(chrome, { type: 'getGroupTitle' }, sender);
+  assert.equal(get.ok, false);
+  assert.equal(chrome._groups.get(g).title, 'Secret Task');
+
+  const ok = await sendMessage(chrome, { type: 'setGroupTitle', title: 'Inbox' },
+    { tab: { id: 2, groupId: g }, url: 'https://mail.google.com/mail/u/0/' });
+  assert.equal(ok.ok, true);
+});
+
+test('allowlist: an existing custom list is used as-is, without the built-ins', () => {
+  const { ctx } = loadBackground();
+  const list = ['example.org'];
+  assert.equal(ctx.isHostAllowed('example.org', list), true);
+  assert.equal(ctx.isHostAllowed('mail.google.com', list), false);
 });
 
 test('allowlist: exact and wildcard patterns', () => {
@@ -150,7 +191,7 @@ test('restore (on by default): a new "⌛Claude" group gets the session name bac
   const { ctx, chrome } = loadBackground();
   const old = chrome._addGroup({ windowId: 5, title: 'Claude' });
   await sendMessage(chrome, { type: 'setGroupTitle', title: 'Kiefer Pallet', color: 'blue' },
-    { tab: { id: 1, groupId: old }, url: 'https://example.com/' });
+    { tab: { id: 1, groupId: old }, url: 'https://mail.google.com/' });
   chrome._retitle(old, '⌛Kiefer Pallet'); // Claude in Chrome adds its status emoji
   await chrome._settle();
 
@@ -217,7 +258,7 @@ test('restore: can be turned off, and never copies a name whose group is still o
   await chrome.storage.local.set({ restoreTitle: false });
   const old = chrome._addGroup({ windowId: 5 });
   await sendMessage(chrome, { type: 'setGroupTitle', title: 'Kiefer Pallet' },
-    { tab: { id: 1, groupId: old }, url: 'https://example.com/' });
+    { tab: { id: 1, groupId: old }, url: 'https://mail.google.com/' });
   await chrome._settle();
   chrome._removeGroup(old);
   const fresh = chrome._addGroup({ windowId: 5, title: 'Claude' });
@@ -226,7 +267,7 @@ test('restore: can be turned off, and never copies a name whose group is still o
   await chrome.storage.local.set({ restoreTitle: true });
   const named = chrome._addGroup({ windowId: 7 });
   await sendMessage(chrome, { type: 'setGroupTitle', title: 'Box Prices' },
-    { tab: { id: 2, groupId: named }, url: 'https://example.com/' });
+    { tab: { id: 2, groupId: named }, url: 'https://mail.google.com/' });
   await chrome._settle();
   const parallel = chrome._addGroup({ windowId: 7, title: 'Claude' });
   assert.equal(await ctx.maybeRestoreTitle(parallel), false);
@@ -237,7 +278,7 @@ test('restore: two "Claude" groups created at once do not both get the same name
   const { ctx, chrome } = loadBackground();
   const old = chrome._addGroup({ windowId: 5 });
   await sendMessage(chrome, { type: 'setGroupTitle', title: 'Big Blue Collection' },
-    { tab: { id: 1, groupId: old }, url: 'https://example.com/' });
+    { tab: { id: 1, groupId: old }, url: 'https://mail.google.com/' });
   await chrome._settle();
   chrome._removeGroup(old);
 
@@ -254,7 +295,7 @@ test('restore: a name an open group in another window carries is not copied', as
   const { ctx, chrome } = loadBackground();
   const old = chrome._addGroup({ windowId: 5 });
   await sendMessage(chrome, { type: 'setGroupTitle', title: 'Big Blue Collection' },
-    { tab: { id: 1, groupId: old }, url: 'https://example.com/' });
+    { tab: { id: 1, groupId: old }, url: 'https://mail.google.com/' });
   await chrome._settle();
   chrome._removeGroup(old);
   const elsewhere = chrome._addGroup({ windowId: 6, title: '' });

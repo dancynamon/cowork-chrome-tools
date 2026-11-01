@@ -14,6 +14,8 @@
 // Automatic site-based labeling lives in auto.js, and restoring a title after
 // Claude in Chrome recreates its group in restore.js, so this file stays about
 // the explicit set/get protocol.
+// Not wrapped in try: without the default allowlist the bridge must not run.
+importScripts('allowlist-defaults.js');
 try { importScripts('auto.js', 'restore.js'); } catch (e) { console.warn('auto.js/restore.js not loaded:', e); }
 
 // Gmail link copier: routes its keyboard shortcuts to the Gmail tab.
@@ -31,16 +33,19 @@ async function forgetAutoTitle(groupId) {
   } catch (e) { /* storage.session unavailable - harmless */ }
 }
 
-// Optional allowlist of sites whose pages may use the content-script bridge
+// Allowlist of sites whose pages may use the content-script bridge
 // (storage.local 'allowlist', edited in the popup). Empty - the default - means
-// any page may rename the group it is in, exactly as before. The popup path is
-// never restricted: it is you clicking the toolbar.
+// DEFAULT_ALLOWLIST (allowlist-defaults.js), the sites Cowork works on; any
+// other page is refused, so a random site cannot rename or read your group.
+// A "*" entry allows every site. The popup path is never restricted: it is
+// you clicking the toolbar.
 //
 // Pattern forms: "mail.google.com" (that host only) or "*.myshopify.com" (the
 // domain and every subdomain). A pasted URL is reduced to its hostname.
 function normalizePattern(pattern) {
   let p = String(pattern || '').trim().toLowerCase();
   if (!p) return '';
+  if (p === '*') return p;
   const wild = p.startsWith('*.');
   if (wild) p = p.slice(2);
   if (/^[a-z][a-z0-9+.-]*:\/\//.test(p)) {
@@ -51,8 +56,9 @@ function normalizePattern(pattern) {
 }
 
 function isHostAllowed(host, allowlist) {
-  const list = (Array.isArray(allowlist) ? allowlist : []).map(normalizePattern).filter(Boolean);
-  if (list.length === 0) return true;
+  let list = (Array.isArray(allowlist) ? allowlist : []).map(normalizePattern).filter(Boolean);
+  if (list.length === 0) list = DEFAULT_ALLOWLIST.map(normalizePattern);
+  if (list.includes('*')) return true;
   const h = String(host || '').toLowerCase().replace(/\.$/, '');
   if (!h) return false;
   return list.some((p) => p.startsWith('*.')
