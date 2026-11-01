@@ -135,7 +135,7 @@ Valid colors: `grey, blue, red, yellow, green, pink, purple, cyan, orange`
 |---|---|
 | `ERROR: tab NNN is not in a tab group` | tab is standalone; group it first |
 | `ERROR: invalid color "x"` | use one of the nine Chrome group colors |
-| `ERROR: site not in allowlist: host` | the popup's "Allowed sites" list is set and excludes this site |
+| `ERROR: site not in allowlist: host` | the site is not in the popup's "Allowed sites" list (or, with that list empty, not one of the built-in work sites); add it there |
 | `null` / no result attribute | extension not loaded, or page is `chrome://` (content scripts are blocked there) |
 
 ## Limitations
@@ -173,17 +173,31 @@ it writes. Read-back results include it, e.g. `title="⌛Kiefer Pallet"`.
 
 ## Security: allowed sites
 
-`content.js` runs on `<all_urls>`, so by default any web page could set the
-attribute and rename (or read) the title of the group it is in. The impact is a
-label change, not data access, but you can lock it down from the popup:
-**Allowed sites**, one per line, `mail.google.com` for one host or
-`*.myshopify.com` for a domain and all its subdomains (a pasted URL is reduced
-to its host). "Add this site" fills in the active tab's host. Leave the list
-empty to allow every site, which is the default. The popup itself is never
-restricted, and the popup-only messages refuse content-script senders.
+`content.js` runs on every page so the session snippet works wherever a task
+starts, but since 2.1.0 only allowed sites may use it to rename (or read) the
+title of the group they are in. Everything else gets
+`ERROR: site not in allowlist: <host>`.
 
-For a hard lock at the Chrome level you can still edit `manifest.json` and
-replace `"matches": ["<all_urls>"]` with only the hosts you automate, for example:
+- **Empty list (the default):** the built-in work sites in
+  `allowlist-defaults.js`: Shopify admin, Amazon Seller Central, QBO/Intuit,
+  Gmail, Google Docs, 71lbs, UPS, FedEx, GTZship/GlobalTranz, HubSpot and
+  Maytronics (the same sites `auto.js` names).
+- **Your own list:** **Allowed sites** in the popup, one per line,
+  `mail.google.com` for one host or `*.myshopify.com` for a domain and all its
+  subdomains (a pasted URL is reduced to its host). A saved list replaces the
+  built-ins; "Add this site" on an empty list starts from them. Lists saved
+  before 2.1.0 keep working unchanged.
+- **Every site (the pre-2.1.0 behavior):** save a single `*`.
+
+The popup itself is never restricted, and the popup-only messages refuse
+content-script senders.
+
+The extension declares no `host_permissions` (2.1.0): nothing in it injects
+scripts, reads cookies or fetches cross-origin from the worker, and the `tabs`
+permission already gives tab URLs. Chrome still shows the "all sites" install
+warning because of `content.js`'s `<all_urls>` match. For a hard lock at the
+Chrome level, edit `manifest.json` and replace `"matches": ["<all_urls>"]`
+with only the hosts you automate, for example:
 
 ```json
 "matches": [
@@ -195,8 +209,6 @@ replace `"matches": ["<all_urls>"]` with only the hosts you automate, for exampl
 ]
 ```
 
-Same edit for `host_permissions`.
-
 ## Development
 
 ```bash
@@ -207,14 +219,30 @@ Node 18+ and no dependencies: `test/chrome-mock.js` loads `background.js` (and
 the `auto.js` / `restore.js` it imports) into a vm context with an in-memory
 `chrome.*` mock. Tests cover `labelForUrl`, the replaceable-title rule,
 dominant-site picking, the allowlist and title restore.
+`test/gmail-parsers.test.js` runs `gmail/parsers.js` against synthetic Gmail
+print-view fixtures in `test/fixtures/gmail/` (fictional people and domains,
+never real mail); when Gmail changes its print view, add a fixture that
+reproduces the break.
 
-Files: `background.js` (message protocol, allowlist), `auto.js` (site naming),
+Files: `background.js` (message protocol, allowlist), `allowlist-defaults.js`
+(built-in allowed sites), `auto.js` (site naming),
 `restore.js` (name restore), `content.js` (page bridge), `popup.*` (toolbar UI),
-`gmail/` (link copier: `content.js`, `styles.css`, `background.js` for the
+`gmail/` (link copier: `content.js` for the Gmail UI, `parsers.js` for the
+pure print-view parsing it loads first, `styles.css`, `background.js` for the
 shortcuts, `popup.js` for the popup's Gmail section).
 
 ## Changelog
 
+- **2.1.0** — security: no more `host_permissions: <all_urls>` (unused); an
+  empty "Allowed sites" list now means the built-in work sites, not every site
+  (`*` restores the old behavior; saved lists are unchanged). Gmail: the print
+  view parsers moved to `gmail/parsers.js` with fixture tests, which found and
+  fixed: the ✨ Cowork prompt never included the thread body (a stray
+  `messages` reference threw, so it always fell back to IDs only); MONEY took
+  the oldest message's figure over the newest; negative amounts lost their
+  sign; `$300,` kept the comma; "Subtotal" counted as "Total"; `Cc:` lines and
+  the next sender's name leaked into message gists; numeric entities such as
+  `&#8239;` before PM were not decoded, so those threads did not parse.
 - **2.0.1** — restore only fires on a group titled "Claude", not on the blank
   title a new group has before Claude in Chrome names it (a new session in the
   same window was getting the previous task's name; found in live testing).

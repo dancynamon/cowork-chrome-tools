@@ -79,3 +79,7 @@ account you're signed into when you copy.
 - Gmail's HTML class names change occasionally. If the button ever stops
   appearing, it's almost always a class-name change in `content.js`
   (`.adn`, `.gH`, `.gE`) that needs a quick update.
+- The ✨ blurb's FROM/TO/DATE, body and MONEY come from Gmail's print view,
+  parsed in `parsers.js`. If those go missing while the IDs still appear, the
+  print-view markup changed: save a synthetic copy that reproduces it under
+  `test/fixtures/gmail/` and fix `parsers.js` until `npm test` passes.

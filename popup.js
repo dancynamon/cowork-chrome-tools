@@ -72,6 +72,7 @@ restoreEl.addEventListener('change', () => {
 });
 
 const allowEl = document.getElementById('allowlist');
+allowEl.placeholder = '(empty = built-in sites)\n' + DEFAULT_ALLOWLIST.join('\n');
 
 function parseAllowlist(text) {
   return text.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean);
@@ -86,7 +87,7 @@ document.getElementById('saveAllow').addEventListener('click', async () => {
   const allowlist = parseAllowlist(allowEl.value);
   await chrome.storage.local.set({ allowlist });
   allowEl.value = allowlist.join('\n');
-  setStatus(allowlist.length ? 'Allowlist saved (' + allowlist.length + ' sites)' : 'Allowlist cleared - every site allowed', 'ok');
+  setStatus(allowlist.length ? 'Allowlist saved (' + allowlist.length + ' sites)' : 'Allowlist cleared - built-in sites only', 'ok');
 });
 
 document.getElementById('addSite').addEventListener('click', () => {
@@ -96,7 +97,9 @@ document.getElementById('addSite').addEventListener('click', () => {
     if (u.protocol === 'http:' || u.protocol === 'https:') host = u.hostname;
   } catch (e) { /* not a web page */ }
   if (!host) { setStatus('Active tab is not a web page', 'err'); return; }
-  const list = parseAllowlist(allowEl.value);
+  // Starting from empty: keep the built-in sites, which a non-empty list replaces.
+  let list = parseAllowlist(allowEl.value);
+  if (!list.length) list = DEFAULT_ALLOWLIST.slice();
   if (!list.includes(host)) list.push(host);
   allowEl.value = list.join('\n');
   setStatus('Added ' + host + ' - click Save', '');

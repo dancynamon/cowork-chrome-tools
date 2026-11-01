@@ -87,8 +87,9 @@
     <summary>Allowed sites</summary>
     <p class="hint">Sites whose pages may rename their group via the session snippet.
       One per line; <code>*.example.com</code> covers subdomains.
-      Leave empty to allow every site (default).</p>
-    <textarea id="allowlist" rows="5" spellcheck="false" placeholder="(empty = every site)"></textarea>
+      Leave empty to allow only the built-in work sites shown below (default);
+      a single <code>*</code> allows every site.</p>
+    <textarea id="allowlist" rows="5" spellcheck="false"></textarea>
     <div class="row">
       <button id="addSite" type="button" class="secondary">Add this site</button>
       <button id="saveAllow" type="button">Save</button>
@@ -98,6 +99,7 @@
   <div id="status"></div>
   <div id="version"></div>
 
+  <script src="allowlist-defaults.js"></script>
   <script src="popup.js"></script>
   <script src="gmail/popup.js"></script>
 </body>

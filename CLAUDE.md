@@ -7,7 +7,13 @@ clone (~/code/cowork-chrome-tools). Two features:
    (page-attribute bridge), `auto.js` (site-based labels), `restore.js`
    (puts a name back when Claude in Chrome recreates a group titled "Claude"),
    `popup.html`/`popup.js`.
-2. Gmail link copier: everything under `gmail/`.
+2. Gmail link copier: everything under `gmail/`. Pure print-view parsing lives
+   in `gmail/parsers.js` (loaded before `gmail/content.js` via the manifest,
+   exposed as `GmailParsers`) and is tested against `test/fixtures/gmail/`.
+   Fixtures are synthetic: never commit real email.
+
+The page bridge only answers allowed sites: the popup's list, or
+`allowlist-defaults.js` when that list is empty.
 
 ## Rules
 - Never touch `document.title`. `chrome.tabGroups.update()` is the only label we write.
