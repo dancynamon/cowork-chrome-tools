@@ -461,6 +461,21 @@
       } else {
         toast("No open message in view", true);
       }
+    } else if (req.type === "get-prompt") {
+      // Popup: return the blurb text; the popup writes the clipboard itself
+      // (the Gmail page is not focused while the popup is open).
+      const meta = gatherDomMeta({});
+      if (!meta.threadId) {
+        sendResponse({ blurb: null });
+      } else {
+        fetchThreadDigest(meta.threadId)
+          .catch(() => null)
+          .then((d) => sendResponse({ blurb: buildBlurb(meta, d) }));
+      }
+    } else if (req.type === "copy-prompt") {
+      const meta = gatherDomMeta({});
+      if (meta.threadId) deepDiveCopy(meta, "Cowork blurb copied");
+      else toast("No thread open", true);
     } else if (req.type === "copy-thread") {
       const link = currentThreadLink();
       if (link) {

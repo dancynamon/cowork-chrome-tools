@@ -10,11 +10,12 @@ Claude Cowork prompt built around the link.
 - **Keyboard shortcut** — `Alt+Shift+C` copies the message you're reading;
   `Alt+Shift+T` copies the whole thread.
 - **Toolbar popup** — on a Gmail tab, the extension's popup shows
-  "Message link" and "Thread link" buttons above the tab group controls.
+  "Message link", "Thread link" and "✨ Cowork prompt" buttons above the tab
+  group controls.
 
 **Copy a Claude Cowork blurb (deep dive):**
-- **✨** icon on inbox-row hover, or the **✨ Cowork prompt** chip in an open
-  message header.
+- **✨** icon on inbox-row hover, the **✨ Cowork prompt** chip in an open
+  message header, `Alt+Shift+P` with a thread open, or the popup button.
 - On click it reads the **resolved Gmail API IDs straight from the DOM**
   (`data-legacy-thread-id` / `data-legacy-message-id` — these *are* the hex API
   ids), then fetches the print view and parses *every* message. It emits a
@@ -55,7 +56,7 @@ up from this folder) unpacked, not this folder. See the root README.
 ### Change the shortcuts
 
 Go to `chrome://extensions/shortcuts` to remap `Alt+Shift+C` /
-`Alt+Shift+T` if they clash with anything.
+`Alt+Shift+T` / `Alt+Shift+P` if they clash with anything.
 
 ## How it works
 

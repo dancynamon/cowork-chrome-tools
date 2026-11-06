@@ -44,7 +44,34 @@
     }
   }
 
+  async function copyPrompt() {
+    const tab = await activeGmailTab();
+    if (!tab) {
+      setStatus("Open a Gmail tab first.", true);
+      return;
+    }
+    setStatus("Building blurb…");
+    let resp;
+    try {
+      resp = await chrome.tabs.sendMessage(tab.id, { type: "get-prompt" });
+    } catch (e) {
+      setStatus("Reload the Gmail tab and retry.", true);
+      return;
+    }
+    if (!resp || !resp.blurb) {
+      setStatus("No thread open.", true);
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(resp.blurb);
+      setStatus("Cowork prompt copied!");
+    } catch (e) {
+      setStatus("Copy failed.", true);
+    }
+  }
+
   activeGmailTab().then((tab) => { section.hidden = !tab; });
+  document.getElementById("gmailPrompt").addEventListener("click", copyPrompt);
   document.getElementById("gmailMsg").addEventListener("click", () => copyLink("get-message"));
   document.getElementById("gmailThread").addEventListener("click", () => copyLink("get-thread"));
 })();
