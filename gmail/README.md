@@ -22,23 +22,48 @@ Claude Cowork prompt built around the link.
   structured blurb:
 
   ```
-  SUBJECT:    <subject>            ← first line, so Cowork names the task by subject
-  THREAD_ID:  <hex API thread id>  ← connector fetches directly, no DOM scrape
-  MSG_IDS:    [<hex>, ...]         ← per-message ids, newest LAST
-  PERMALINK:  …/#all/<THREAD_ID>   ← stable hex permalink, not the #FMfcg… fragment
-  ACCOUNT:    u/<N>  (<email>)
-  FROM / TO / DATE
-  ATTACHMENTS: filename (size)     ← connector pulls bytes via THREAD_ID/MSG_ID
-  BODY (newest-first): …
-  INTENT:     process
-  MONEY:      $<amt> (status: PAID|DUE, <card x1234>)
+  SUBJECT: <subject>                 ← first line, so Cowork names the task by subject
+  THREAD_ID: <hex API thread id>     ← connector fetches directly, no DOM scrape
+  MSG_IDS: [<hex>, ...]              ← only when it adds to THREAD_ID; newest LAST
+  PERMALINK: …/#all/<THREAD_ID>      ← stable hex permalink, not the #FMfcg… fragment
+  ACCOUNT: u/<N> (<email>)
+  ROUTE: process-sales-order         ← suggested skill, or "(FYI: …)"; a hint only
+  REFS: PO F2000123 · SO 1500 · INV 4417 · EST 3656 · ORDER 1042
+  TRACK: 1Z… UPS · 1234… FedEx · 94… USPS
+  LINES: 120× DMO-50-RD-PL · 40× DMO-40-RD-PL · PM-STF-RD-4848
+  SHIP_TO: <name, street, city, ST 12345>
+  MONEY: $<amt> (status: PAID|DUE, <card x1234>)
+  TERMS: Net 30 | Due on receipt | Due on fulfillment | Prepaid | COD
+  FROM: <sender> → <to> · <date>
+  ATTACHMENTS: file.pdf (212K), …    ← inline signature images left out
+  LATEST MESSAGE:
+  <newest message, up to 1,200 characters>
+  EARLIER (newest first):
+  • <date> <who>: <one-line gist>
+  INTENT: process
   ```
+
+  Every line after ACCOUNT appears only when there is something to say, so a
+  typical blurb is a few hundred characters. ROUTE, REFS, TRACK, LINES,
+  SHIP_TO and TERMS are read from the subject and every message in the
+  thread (quoted history removed), so Cowork can often fill a sales order or
+  bill without opening the email. `INTENT: process` still means "classify and
+  route"; ROUTE is a suggestion it can overrule. The routing rules are the
+  `ROUTES` table in `parsers.js`: generic patterns only (subject wording,
+  Shopify / QuickBooks / carrier senders, and your own mail domain read from
+  the tab), because this repository is public. Never add a customer's or
+  vendor's domain to it; a test fails if you do.
 
   Why the IDs matter: the web URL fragment (`#FMfcg…`) is the *web client's* id,
   not the API id — emitting the resolved hex `THREAD_ID` means Claude's Gmail
   connector never has to drive Chrome to scrape it.
 - If the print-view fetch fails, the blurb still carries the identity block
-  (IDs + subject + account) so the connector can pull the rest via `THREAD_ID`.
+  (IDs + subject + account, plus any refs in the subject) so the connector can
+  pull the rest via `THREAD_ID`.
+- In an open thread, THREAD_ID comes from the subject header's thread id
+  (2.3.0). Before that it was the first *visible* message's id, which is only
+  the thread id when no earlier message is collapsed; otherwise `get_thread`
+  404ed.
 
   *Async copy:* uses the `ClipboardItem` promise pattern so the clipboard stays
   tied to your click while the thread loads.

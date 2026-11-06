@@ -173,7 +173,7 @@
     // older messages collapsed to one-line gists so long threads stay small.
     const ordered = segs.slice().reverse(); // newest first
     const EARLIER_MAX = 6;
-    const latestBody = clip(ordered[0] ? ordered[0].body : "", 500) || "(no readable text)";
+    const latestBody = clip(ordered[0] ? ordered[0].body : "", 1200) || "(no readable text)";
     const earlier = ordered.slice(1, 1 + EARLIER_MAX).map((s) => ({
       date: shortDate(s.date),
       who: shortSender(s.sender),
@@ -212,71 +212,199 @@
       money: extractMoney(lastSeg.body) || extractMoney(t),
       attachmentSizes,
       latestBody,
+      // Unclipped, for the field extractors and routing: every message's
+      // cleaned body (quoted history already removed), and the newest alone.
+      text: segs.map((s) => s.body).join("\n"),
+      latestText: lastSeg.body,
       earlier,
       omitted,
     };
   }
 
+  // ---- structured fields Cowork can act on without reading the body ------
+
+  const uniq = (xs) => [...new Set(xs)];
+
+  // Reference numbers. Each kind keeps its first 4 distinct values, oldest
+  // mention first. With a marker ("#", "No.", "Number") the value may start
+  // with letters (AHS-1418568); without one it needs 3+ leading digits
+  // ("Invoice 4417", "PO160272") or a short letter prefix and 4+ digits
+  // ("PO F2000123"), so "Purchase Order Date" and "PO deliver date" are not POs.
+  const REF = (lead) => new RegExp(
+    lead + String.raw`(?:\s*(?:#|No\.?|Number)\s*:?\s*([A-Z]{0,4}-?\d[\w-]{2,})|\s*:?\s*((?:[A-Z]{1,4}-?)?\d{4,}[\w-]*|\d{3,}[\w-]*))`, "gi");
+  const REF_RES = [
+    ["PO", REF(String.raw`\b(?:P\.?O\.?|Purchase Order)`)],
+    ["SO", REF(String.raw`\b(?:S\.?O\.?(?=\s*#)|Sales Order)`)],
+    ["INV", REF(String.raw`\bInvoice`)],
+    ["EST", REF(String.raw`\b(?:Estimate|Quote)`)],
+    ["ORDER", REF(String.raw`(?<!(?:Purchase|Sales)\s)\bOrder`)],
+  ];
+
+  function extractRefs(t) {
+    const out = [];
+    for (const [kind, re] of REF_RES) {
+      const vals = [...(t || "").matchAll(re)].map((m) => (m[1] || m[2]).replace(/-+$/, ""));
+      uniq(vals).slice(0, 4).forEach((v) => out.push(kind + " " + v));
+    }
+    return out;
+  }
+
+  // Tracking numbers with their carrier. FedEx's bare 12/15 digits only count
+  // next to a word that says so, or they would catch account numbers.
+  function extractTracking(t) {
+    t = t || "";
+    const out = [];
+    for (const m of t.matchAll(/\b1Z[0-9A-Z]{16}\b/g)) out.push(m[0] + " UPS");
+    for (const m of t.matchAll(/\b9[2-5]\d{18,20}\b/g)) out.push(m[0] + " USPS");
+    for (const m of t.matchAll(/\b(\d{12}|\d{15})\b/g)) {
+      const near = t.slice(Math.max(0, m.index - 40), m.index);
+      if (/fed\s?ex|tracking|track/i.test(near) && !/(acct|account)\W*(#|no\.?)?\s*$/i.test(near))
+        out.push(m[0] + " FedEx");
+    }
+    return uniq(out).slice(0, 6);
+  }
+
+  // SKUs: letters first, then 2+ dash-separated parts (XRT-50-RD-CL,
+  // RWB-BL-100). Some catalogs put a pack digit and a space in front ("3 FB-7315-YL").
+  const SKU = String.raw`(?:\d )?[A-Z][A-Z0-9]{1,5}(?:-[A-Z0-9]{1,8}){2,4}\b`;
+
+  // "6× XRT-50-RD-CL" lines: "6 x SKU" in an order note, "× 6 … SKU: X" in a
+  // Shopify order notification, and bare SKUs (no quantity) anywhere else.
+  function extractLines(t) {
+    t = t || "";
+    const qty = new Map();
+    const order = [];
+    const add = (sku, q) => {
+      if (!qty.has(sku)) order.push(sku);
+      if (q && !qty.get(sku)) qty.set(sku, q);
+      else if (!qty.has(sku)) qty.set(sku, "");
+    };
+    for (const m of t.matchAll(new RegExp(String.raw`\b(\d{1,5})\s*[x×]\s*(` + SKU + ")", "g"))) add(m[2], m[1]);
+    for (const m of t.matchAll(new RegExp(String.raw`×\s*(\d{1,5})\b[^×]{0,120}?SKU:\s*(` + SKU + ")", "g"))) add(m[2], m[1]);
+    for (const m of t.matchAll(new RegExp(SKU, "g"))) add(m[0], "");
+    // Drop a bare SKU that is the same item as one found with a quantity but
+    // spelled with/without the pack-digit prefix ("FB-7315-YL" vs "3 FB-7315-YL").
+    return order
+      .filter((s) => !(qty.get(s) === "" && order.some((o) => o !== s && (o.endsWith(" " + s) || s.endsWith(" " + o)) && qty.get(o))))
+      .slice(0, 12)
+      .map((s) => (qty.get(s) ? qty.get(s) + "× " + s : s));
+  }
+
+  const STATES = "AL|AK|AZ|AR|CA|CO|CT|DE|DC|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|PR|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|" +
+    "Alabama|Alaska|Arizona|Arkansas|California|Colorado|Connecticut|Delaware|Florida|Georgia|Hawaii|Idaho|Illinois|Indiana|Iowa|Kansas|Kentucky|Louisiana|Maine|Maryland|Massachusetts|Michigan|Minnesota|Mississippi|Missouri|Montana|Nebraska|Nevada|New Hampshire|New Jersey|New Mexico|New York|North Carolina|North Dakota|Ohio|Oklahoma|Oregon|Pennsylvania|Puerto Rico|Rhode Island|South Carolina|South Dakota|Tennessee|Texas|Utah|Vermont|Virginia|Washington|West Virginia|Wisconsin|Wyoming";
+
+  // The ship-to block, from its label through "<State> <ZIP>". The newest one
+  // wins, since a thread's later message corrects an earlier address.
+  function extractShipTo(t) {
+    const re = new RegExp(
+      String.raw`\b(?:Shipping address|Ship(?:ping)? to|Deliver to)\s*:?\s*(.{5,200}?\b(?:` + STATES + String.raw`)\.?,?\s+\d{5}(?:-\d{4})?)\b`, "gi");
+    const all = [...(t || "").matchAll(re)];
+    return all.length ? clip(all[all.length - 1][1], 200) : null;
+  }
+
+  function extractTerms(t) {
+    const m = (t || "").match(/\bNet\s?(\d{1,3})\b|\b(Due on (?:receipt|fulfillment)|Prepaid|C\.?O\.?D\.?|Credit card on file)\b/i);
+    return m ? (m[1] ? "Net " + m[1] : m[2]) : null;
+  }
+
+  // ---- ROUTE: which skill should take this thread ---------------------------
+  // A hint, not an order: INTENT stays "process" and Cowork's own classifier
+  // decides. First matching rule wins. Edit this table to change routing; keep
+  // it free of customer or vendor names (this repository is public).
+  // ctx: { subject, from (latest sender email), own (your mail domain), text }
+  const ROUTES = [
+    ["process-maytronics-dropshipments", (c) => /^\[[^\]]+\] Order #\d+ placed by/i.test(c.subject) && /\b(Dolphin|Maytronics)\b/i.test(c.text)],
+    ["process-website-dropship-orders", (c) => /^\[[^\]]+\] Order #\d+ placed by/i.test(c.subject)],
+    ["answer-customer-question", (c) => /@shopify\.com$/i.test(c.from) && /customer message/i.test(c.subject)],
+    ["(FYI: payment received)", (c) => /^Payment received/i.test(c.subject)],
+    ["(FYI: our invoice/estimate sent)", (c) => /@notification\.intuit\.com$/i.test(c.from) && /^(Invoice|Estimate) #?\d+ from/i.test(c.subject)],
+    ["(vendor reply on our PO)", (c) => /Purchase Order #?\d+ from /i.test(c.subject)],
+    ["process-shipment", (c) => c.own && c.from.endsWith("@" + c.own) && /\b(shipp(?:ed|ing)|tracking)\b/i.test(c.latest)],
+    ["(FYI: carrier notice)", (c) => /@([\w-]+\.)*(ups|fedex|usps|mothership|71lbs)\.com$/i.test(c.from)],
+    ["process-sales-order", (c) => !(c.own && c.from.endsWith("@" + c.own)) &&
+      /\b(purchase order|new purchase|blanket release|P\.?O\.?\s*#?\s*:?\s*[A-Z]{0,4}-?\d{3,})/i.test(c.subject + " " + c.latest)],
+    ["process-bill", (c) => !(c.own && c.from.endsWith("@" + c.own)) && /\b(invoice|statement|bill)\b/i.test(c.subject)],
+    ["aquamentor-create-estimate", (c) => /\b(quote|pricing|price)\b/i.test(c.subject + " " + c.latest)],
+    ["(FYI: automated notice)", (c) => /(no-?reply|do-?not-?reply|alerts?|notifications?)[@.]/i.test(c.from)],
+  ];
+
+  function routeFor(ctx) {
+    const c = {
+      subject: ctx.subject || "", from: (ctx.from || "").toLowerCase(),
+      own: (ctx.own || "").toLowerCase(), text: ctx.text || "", latest: ctx.latest || "",
+    };
+    const hit = ROUTES.find(([, test]) => test(c));
+    return hit ? hit[0] : null;
+  }
+
+  // Inline signature images are not attachments anyone needs.
+  const isInlineImage = (name) => /^(image|Outlook-|logo)[\w-]*\.(png|jpe?g|gif)$/i.test(name);
+
   // Renders the Cowork blurb. `meta` is the DOM-gathered identity (IDs, account,
   // subject, attachments); `d` is the fetched thread digest (FROM/TO/DATE, body,
   // money) — d may be null if the fetch failed, in which case we still emit the
-  // identity block so Claude's connector can pull the rest via THREAD_ID.
+  // identity block (and whatever the subject alone gives) so Claude's connector
+  // can pull the rest via THREAD_ID.
+  // Labels THREAD_ID, PERMALINK, INTENT and LATEST MESSAGE are read by the
+  // email-processing and inbox-sweep skills: keep their names.
   function buildBlurb(meta, d) {
     const tid = meta.threadId || "";
-    const pad = (k) => (k + ":").padEnd(11) + " ";
     const L = [];
-    L.push(pad("SUBJECT") + (meta.subject || "(no subject)"));
-    if (tid) L.push(pad("THREAD_ID") + tid);
-    if (meta.msgIds && meta.msgIds.length)
-      L.push(pad("MSG_IDS") + "[" + meta.msgIds.join(", ") + "]");
-    if (tid)
-      L.push(
-        pad("PERMALINK") +
-          "https://mail.google.com/mail/u/" + meta.account + "/#all/" + tid
-      );
-    L.push(pad("ACCOUNT") + "u/" + meta.account + (meta.email ? "  (" + meta.email + ")" : ""));
+    const put = (k, v) => { if (v) L.push(k + ": " + v); };
+    put("SUBJECT", meta.subject || "(no subject)");
+    put("THREAD_ID", tid);
+    const ids = meta.msgIds || [];
+    if (ids.length > 1 || (ids.length === 1 && ids[0] !== tid)) put("MSG_IDS", "[" + ids.join(", ") + "]");
+    if (tid) put("PERMALINK", "https://mail.google.com/mail/u/" + meta.account + "/#all/" + tid);
+    put("ACCOUNT", "u/" + meta.account + (meta.email ? " (" + meta.email + ")" : ""));
 
-    if (d && d.latest) {
-      L.push("");
-      if (d.latest.from) L.push(pad("FROM") + d.latest.from);
-      if (d.latest.to) L.push(pad("TO") + d.latest.to);
-      if (d.latest.date) L.push(pad("DATE") + d.latest.date);
+    const text = (meta.subject || "") + "\n" + ((d && d.text) || "");
+    const latest = (d && d.latest) || {};
+    const fromEmail = ((latest.from || "").match(/<([^>]+)>/) || [])[1] || "";
+    put("ROUTE", routeFor({
+      subject: meta.subject, from: fromEmail, text,
+      // A shared free-mail domain says nothing about who is a teammate.
+      own: /^(gmail|googlemail|yahoo|outlook|hotmail|icloud|aol)\./i.test((meta.email || "").split("@")[1] || "")
+        ? "" : (meta.email || "").split("@")[1] || "",
+      latest: (d && d.latestText) || "",
+    }));
+    put("REFS", extractRefs(text).join(" · "));
+    put("TRACK", extractTracking(text).join(" · "));
+    put("LINES", extractLines(text).join(" · "));
+    put("SHIP_TO", extractShipTo(text));
+    if (d && d.money) put("MONEY", d.money.replace(/\s{2,}/g, " "));
+    put("TERMS", extractTerms(text));
+
+    if (latest.from) {
+      put("FROM", latest.from + (latest.to ? " → " + latest.to : "") + (latest.date ? " · " + latest.date : ""));
     }
-    if (meta.attachments && meta.attachments.length) {
+    const atts = (meta.attachments || []).filter((a) => !isInlineImage(a.name));
+    if (atts.length) {
       const sizes = (d && d.attachmentSizes) || [];
-      L.push("ATTACHMENTS:");
-      meta.attachments.forEach((a, i) => {
+      put("ATTACHMENTS", atts.map((a, i) => {
         const size = a.size || sizes[i] || "";
-        L.push("  - " + a.name + (size ? " (" + size + ")" : ""));
-      });
-      L.push("  (fetch bytes via THREAD_ID/MSG_ID — Gmail connector)");
+        return a.name + (size ? " (" + size + ")" : "");
+      }).join(", "));
     }
 
     if (d && d.latestBody) {
-      L.push("", "LATEST MESSAGE:");
-      L.push(d.latestBody);
+      L.push("LATEST MESSAGE:", d.latestBody);
       if (d.earlier && d.earlier.length) {
-        L.push("", "EARLIER (newest first, one line each):");
-        d.earlier.forEach((m) =>
-          L.push("• " + m.date + " " + m.who + ": " + m.gist)
-        );
+        L.push("EARLIER (newest first):");
+        d.earlier.forEach((m) => L.push("• " + m.date + " " + m.who + ": " + m.gist));
       }
-      if (d.omitted)
-        L.push(
-          "• (+" + d.omitted + " older messages — fetch full thread via THREAD_ID)"
-        );
+      if (d.omitted) L.push("• (+" + d.omitted + " older, fetch via THREAD_ID)");
     } else {
-      L.push("", "BODY: (open the thread via THREAD_ID to read it)");
+      L.push("BODY: (open the thread via THREAD_ID to read it)");
     }
-
-    L.push("INTENT:     process");
-    if (d && d.money) L.push("MONEY:      " + d.money);
+    put("INTENT", "process");
     return L.join("\n");
   }
 
   const api = {
     clip, shortDate, shortSender, decodeStrip, cleanBody, normalizeDate,
     extractMoney, stripRecipients, senderBefore, parsePrintView, buildBlurb,
+    extractRefs, extractTracking, extractLines, extractShipTo, extractTerms, routeFor, ROUTES,
   };
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.GmailParsers = api;

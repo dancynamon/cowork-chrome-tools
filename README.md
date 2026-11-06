@@ -234,6 +234,16 @@ shortcuts, `popup.js` for the popup's Gmail section).
 
 ## Changelog
 
+- **2.3.0** — Gmail ✨ prompt carries the fields Cowork acts on, in less
+  space: ROUTE (suggested skill), REFS (PO / SO / invoice / estimate / order
+  numbers), TRACK (UPS / FedEx / USPS with carrier), LINES (quantity × SKU),
+  SHIP_TO and TERMS; padding, blank lines, the fetch note and a MSG_IDS that
+  only repeats THREAD_ID are gone; the newest message gets 1,200 characters
+  instead of 500; inline signature images are no longer listed as attachments.
+  Labels the skills read (THREAD_ID, PERMALINK, LATEST MESSAGE, INTENT) are
+  unchanged. Fix: in an open thread with collapsed earlier messages,
+  THREAD_ID was a message id (get_thread 404); it now comes from the subject
+  header.
 - **2.2.0** — Gmail: the ✨ Cowork prompt for the open thread is now one
   keystroke (`Alt+Shift+P`) or one click in the toolbar popup, not only the
   chip in the message header. Unknown shortcut commands are ignored instead
