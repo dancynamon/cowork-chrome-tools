@@ -89,11 +89,31 @@
     return {
       account,
       email,
-      threadId: ids[0] || null, // Gmail's thread id == its first message's id
+      // The subject header carries the real thread id. The first *visible*
+      // message is only the thread id when no earlier message is collapsed;
+      // otherwise THREAD_ID was a message id and get_thread 404ed.
+      threadId: openThreadIdFromHeader() || ids[0] || null,
       msgIds: ids, // DOM order is oldest→newest, i.e. newest LAST
       subject: text(document.querySelector("h2.hP")),
       attachments: openAttachments(),
     };
+  }
+
+  // "thread-f:1880946645058298044" (decimal) → its hex API id.
+  function hexFromPermId(v) {
+    const m = (v || "").match(/:(\d+)/);
+    if (!m) return null;
+    try {
+      return BigInt(m[1]).toString(16);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function openThreadIdFromHeader() {
+    const h = document.querySelector("h2.hP[data-legacy-thread-id], h2.hP[data-thread-perm-id]");
+    if (!h) return null;
+    return h.getAttribute("data-legacy-thread-id") || hexFromPermId(h.getAttribute("data-thread-perm-id"));
   }
 
   // ---- deep dive: fetch + parse the whole thread --------------------------
@@ -338,18 +358,7 @@
     if (el) return el.getAttribute("data-legacy-thread-id");
     // Fallback: derive it from the decimal "#thread-f:123..." form.
     const el2 = row.querySelector("[data-thread-id]");
-    if (el2) {
-      const v = el2.getAttribute("data-thread-id") || "";
-      const m = v.match(/:(\d+)/);
-      if (m) {
-        try {
-          return BigInt(m[1]).toString(16);
-        } catch (e) {
-          /* ignore */
-        }
-      }
-    }
-    return null;
+    return el2 ? hexFromPermId(el2.getAttribute("data-thread-id")) : null;
   }
 
   // An <li> icon button that sits in Gmail's hover-action toolbar and inherits
@@ -461,6 +470,21 @@
       } else {
         toast("No open message in view", true);
       }
+    } else if (req.type === "get-prompt") {
+      // Popup: return the blurb text; the popup writes the clipboard itself
+      // (the Gmail page is not focused while the popup is open).
+      const meta = gatherDomMeta({});
+      if (!meta.threadId) {
+        sendResponse({ blurb: null });
+      } else {
+        fetchThreadDigest(meta.threadId)
+          .catch(() => null)
+          .then((d) => sendResponse({ blurb: buildBlurb(meta, d) }));
+      }
+    } else if (req.type === "copy-prompt") {
+      const meta = gatherDomMeta({});
+      if (meta.threadId) deepDiveCopy(meta, "Cowork blurb copied");
+      else toast("No thread open", true);
     } else if (req.type === "copy-thread") {
       const link = currentThreadLink();
       if (link) {

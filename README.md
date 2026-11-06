@@ -6,8 +6,9 @@ One Chrome extension, two Claude Cowork helpers:
 2. **Gmail link copier** — 🔗 copies a Gmail permalink, ✨ copies a structured
    Cowork prompt (subject, API thread/message IDs, sender, money, full thread)
    from any message or inbox row. `Alt+Shift+C` copies the message link,
-   `Alt+Shift+T` the thread link, and the toolbar popup shows both buttons
-   when you are on Gmail. Details: [gmail/README.md](gmail/README.md).
+   `Alt+Shift+T` the thread link, `Alt+Shift+P` the Cowork prompt for the
+   open thread, and the toolbar popup shows all three buttons when you are
+   on Gmail. Details: [gmail/README.md](gmail/README.md).
 
 Until 2.0.0 these were two extensions, "Cowork Tab Group Namer" and "Gmail
 Message Link Copier". Remove both old copies when you load this one.
@@ -233,6 +234,20 @@ shortcuts, `popup.js` for the popup's Gmail section).
 
 ## Changelog
 
+- **2.3.0** — Gmail ✨ prompt carries the fields Cowork acts on, in less
+  space: ROUTE (suggested skill), REFS (PO / SO / invoice / estimate / order
+  numbers), TRACK (UPS / FedEx / USPS with carrier), LINES (quantity × SKU),
+  SHIP_TO and TERMS; padding, blank lines, the fetch note and a MSG_IDS that
+  only repeats THREAD_ID are gone; the newest message gets 1,200 characters
+  instead of 500; inline signature images are no longer listed as attachments.
+  Labels the skills read (THREAD_ID, PERMALINK, LATEST MESSAGE, INTENT) are
+  unchanged. Fix: in an open thread with collapsed earlier messages,
+  THREAD_ID was a message id (get_thread 404); it now comes from the subject
+  header.
+- **2.2.0** — Gmail: the ✨ Cowork prompt for the open thread is now one
+  keystroke (`Alt+Shift+P`) or one click in the toolbar popup, not only the
+  chip in the message header. Unknown shortcut commands are ignored instead
+  of being treated as "copy message link".
 - **2.1.0** — security: no more `host_permissions: <all_urls>` (unused); an
   empty "Allowed sites" list now means the built-in work sites, not every site
   (`*` restores the old behavior; saved lists are unchanged). Gmail: the print

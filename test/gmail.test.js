@@ -10,10 +10,33 @@ test('Gmail shortcuts are routed to the active Gmail tab', async () => {
   chrome._addTab({ id: 1, url: 'https://mail.google.com/mail/u/0/#inbox', active: true });
   await Promise.all(chrome.commands.onCommand.dispatch('copy-message-link'));
   await Promise.all(chrome.commands.onCommand.dispatch('copy-thread-link'));
+  await Promise.all(chrome.commands.onCommand.dispatch('copy-cowork-prompt'));
   assert.deepEqual(plain(chrome._sent), [
     { tabId: 1, msg: { type: 'copy-message' } },
-    { tabId: 1, msg: { type: 'copy-thread' } }
+    { tabId: 1, msg: { type: 'copy-thread' } },
+    { tabId: 1, msg: { type: 'copy-prompt' } }
   ]);
+});
+
+test('an unknown command is not sent to Gmail as a message-link copy', async () => {
+  const { chrome } = loadBackground();
+  chrome._addTab({ id: 1, url: 'https://mail.google.com/mail/u/0/#inbox', active: true });
+  await Promise.all(chrome.commands.onCommand.dispatch('something-else'));
+  assert.equal(chrome._sent.length, 0);
+});
+
+test('every manifest Gmail command has a route, and the content script handles each type', () => {
+  const m = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.json'), 'utf8'));
+  const bg = fs.readFileSync(path.join(ROOT, 'gmail/background.js'), 'utf8');
+  const cs = fs.readFileSync(path.join(ROOT, 'gmail/content.js'), 'utf8');
+  const popup = fs.readFileSync(path.join(ROOT, 'gmail/popup.js'), 'utf8');
+  const routes = Object.fromEntries([...bg.matchAll(/"([\w-]+)":\s*"([\w-]+)"/g)].map((x) => [x[1], x[2]]));
+  for (const cmd of Object.keys(m.commands).filter((c) => c !== '_execute_action')) {
+    assert.ok(routes[cmd], 'no route for ' + cmd);
+  }
+  const types = [...Object.values(routes),
+    ...[...popup.matchAll(/type: "([\w-]+)"|copyLink\("([\w-]+)"\)/g)].map((x) => x[1] || x[2])];
+  for (const t of types) assert.ok(cs.includes(`req.type === "${t}"`), 'content.js ignores ' + t);
 });
 
 test('Gmail shortcuts do nothing on a non-Gmail tab', async () => {
