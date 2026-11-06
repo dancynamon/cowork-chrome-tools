@@ -281,3 +281,36 @@ test('content.js reads the parsers from the GmailParsers global the manifest loa
   const content = fs.readFileSync(path.join(__dirname, '..', 'gmail', 'content.js'), 'utf8');
   assert.match(content, /= window\.GmailParsers;/);
 });
+
+test('check-received fixture: routes to receive-check-payment, CHECK ref, signature trimmed', () => {
+  const b = blurbFor('check-received.html',
+    { subject: 'Check 11/6/26', email: 'owner@vendor.example.com' });
+  assert.ok(b.includes('ROUTE: receive-check-payment'), b);
+  assert.ok(b.includes('REFS: CHECK 3060892'), b);
+  assert.ok(b.includes('MONEY: $2,091'), b);
+  assert.equal(b[b.indexOf('LATEST MESSAGE:') + 1], 'Example Health System Check #: 3060892 Amount: $2,091');
+  assert.doesNotMatch(b.join('\n'), /Vice President|555-555-0100/);
+});
+
+test('extractRefs: CHECK numbers, but not a date or the verb "check"', () => {
+  assert.deepEqual(P.extractRefs('Check #: 3060892, Chk No. 1188, cheque number 4402'),
+    ['CHECK 3060892', 'CHECK 1188', 'CHECK 4402']);
+  assert.deepEqual(P.extractRefs('Check 11/6/26. Please check the 2 boxes.'), []);
+});
+
+test('routeFor: check payments, but not bank deposit alerts or "check PO"', () => {
+  const r = (subject, latest, from = 'pat@customer.example.com') => P.routeFor({ subject, from, latest, text: latest });
+  assert.equal(r('Payment', 'Check #: 3060892 Amount: $2,091'), 'receive-check-payment');
+  assert.equal(r('Fwd: Checks', 'two came in today, $410 and $96'), 'receive-check-payment');
+  assert.equal(r('Your check deposit', 'Check #1234 deposited', 'alerts@bank.example.com'), '(FYI: automated notice)');
+  assert.notEqual(r('Question', 'can you check PO #4417 for me'), 'receive-check-payment');
+});
+
+test('trimSignature: cuts the sender block, keeps sign-offs and bodies that only mention them', () => {
+  const s = 'Pat Q. <pat@x.example.com>';
+  assert.equal(P.trimSignature('Got it. Thanks, Pat Quinn Sales pat@x.example.com P: 555', s), 'Got it. Thanks,');
+  assert.equal(P.trimSignature('Got it. Pat Quinn pat@x.example.com', s), 'Got it.');
+  assert.equal(P.trimSignature('Reach me at pat@x.example.com' + ' and more text'.repeat(40), s).length > 400, true);
+  assert.equal(P.trimSignature('Pat pat@x.example.com', s), 'Pat pat@x.example.com');
+  assert.equal(P.trimSignature('No address here', s), 'No address here');
+});
