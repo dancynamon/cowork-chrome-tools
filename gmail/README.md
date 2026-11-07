@@ -28,7 +28,7 @@ Claude Cowork prompt built around the link.
   PERMALINK: …/#all/<THREAD_ID>      ← stable hex permalink, not the #FMfcg… fragment
   ACCOUNT: u/<N> (<email>)
   ROUTE: process-sales-order         ← suggested skill, or "(FYI: …)"; a hint only
-  REFS: PO F2000123 · SO 1500 · INV 4417 · EST 3656 · ORDER 1042
+  REFS: PO F2000123 · SO 1500 · INV 4417 · EST 3656 · CHECK 3060 · ORDER 1042
   TRACK: 1Z… UPS · 1234… FedEx · 94… USPS
   LINES: 120× DMO-50-RD-PL · 40× DMO-40-RD-PL · PM-STF-RD-4848
   SHIP_TO: <name, street, city, ST 12345>
@@ -46,7 +46,7 @@ Claude Cowork prompt built around the link.
   Every line after ACCOUNT appears only when there is something to say, so a
   typical blurb is a few hundred characters. ROUTE, REFS, TRACK, LINES,
   SHIP_TO and TERMS are read from the subject and every message in the
-  thread (quoted history removed), so Cowork can often fill a sales order or
+  thread (quoted history and the sender's signature block removed), so Cowork can often fill a sales order or
   bill without opening the email. `INTENT: process` still means "classify and
   route"; ROUTE is a suggestion it can overrule. The routing rules are the
   `ROUTES` table in `parsers.js`: generic patterns only (subject wording,

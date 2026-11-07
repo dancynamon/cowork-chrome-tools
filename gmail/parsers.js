@@ -69,6 +69,28 @@
       .trim();
   }
 
+  // Drops the sender's own signature block (name, title, their address,
+  // phone, website), which the print view flattens into the body. Anchor: the
+  // sender's email near the end; cut back to their first name or a sign-off
+  // just before it. Leaves the body alone when that would empty it.
+  function trimSignature(body, sender) {
+    const email = ((sender || "").match(/<([^>]+)>/) || [])[1];
+    if (!email || !body) return body;
+    const idx = body.toLowerCase().lastIndexOf(email.toLowerCase());
+    if (idx < 0 || body.length - idx > 400) return body;
+    const winStart = Math.max(0, idx - 80);
+    const win = body.slice(winStart, idx);
+    let cut = idx;
+    const first = ((sender.match(/^\s*([A-Za-z][A-Za-z'’-]+)/) || [])[1]) || "";
+    const nameAt = first.length > 1
+      ? [...win.matchAll(new RegExp("\\b" + first + "\\b", "g"))].pop() : null;
+    const signOff = [...win.matchAll(/\b(?:Thanks|Thank you|Best|Regards|Sincerely|Cheers)\b[,!.]?/g)].pop();
+    if (signOff) cut = winStart + signOff.index + signOff[0].length;
+    else if (nameAt) cut = winStart + nameAt.index;
+    const kept = body.slice(0, cut).trim();
+    return kept.length >= 3 ? kept : body;
+  }
+
   const MONTHS = {
     Jan: "01", Feb: "02", Mar: "03", Apr: "04", May: "05", Jun: "06",
     Jul: "07", Aug: "08", Sep: "09", Oct: "10", Nov: "11", Dec: "12",
@@ -165,7 +187,7 @@
       // end of this segment.
       const next = senders[k + 1];
       if (next && body.endsWith(next)) body = body.slice(0, -next.length).trim();
-      return { date: m[0], sender: senders[k], body };
+      return { date: m[0], sender: senders[k], body: trimSignature(body, senders[k]) };
     });
     // Newest first. The most recent message gets more room; older ones are
     // trimmed but kept long enough to follow the conversation.
@@ -237,6 +259,7 @@
     ["SO", REF(String.raw`\b(?:S\.?O\.?(?=\s*#)|Sales Order)`)],
     ["INV", REF(String.raw`\bInvoice`)],
     ["EST", REF(String.raw`\b(?:Estimate|Quote)`)],
+    ["CHECK", REF(String.raw`\b(?:Check|Cheque|Chk)`)],
     ["ORDER", REF(String.raw`(?<!(?:Purchase|Sales)\s)\bOrder`)],
   ];
 
@@ -316,6 +339,10 @@
     ["process-maytronics-dropshipments", (c) => /^\[[^\]]+\] Order #\d+ placed by/i.test(c.subject) && /\b(Dolphin|Maytronics)\b/i.test(c.text)],
     ["process-website-dropship-orders", (c) => /^\[[^\]]+\] Order #\d+ placed by/i.test(c.subject)],
     ["answer-customer-question", (c) => /@shopify\.com$/i.test(c.from) && /customer message/i.test(c.subject)],
+    // A check in hand (photo, scan, or "Check #: N Amount: $X"), not a bank's deposit alert.
+    ["receive-check-payment", (c) => !/(no-?reply|do-?not-?reply|alerts?|notifications?)[@.]/i.test(c.from) &&
+      (/\b(?:check|cheque|chk)\s*(?:#|No\.?|number)\s*:?\s*\d{3,}/i.test(c.subject + " " + c.latest) ||
+       (/^(?:(?:fwd?|re):\s*)*(?:checks?|cheques?)\b/i.test(c.subject) && /\$\s?\d/.test(c.latest)))],
     ["(FYI: payment received)", (c) => /^Payment received/i.test(c.subject)],
     ["(FYI: our invoice/estimate sent)", (c) => /@notification\.intuit\.com$/i.test(c.from) && /^(Invoice|Estimate) #?\d+ from/i.test(c.subject)],
     ["(vendor reply on our PO)", (c) => /Purchase Order #?\d+ from /i.test(c.subject)],
@@ -404,7 +431,7 @@
   const api = {
     clip, shortDate, shortSender, decodeStrip, cleanBody, normalizeDate,
     extractMoney, stripRecipients, senderBefore, parsePrintView, buildBlurb,
-    extractRefs, extractTracking, extractLines, extractShipTo, extractTerms, routeFor, ROUTES,
+    trimSignature, extractRefs, extractTracking, extractLines, extractShipTo, extractTerms, routeFor, ROUTES,
   };
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.GmailParsers = api;

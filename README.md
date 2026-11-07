@@ -234,6 +234,10 @@ shortcuts, `popup.js` for the popup's Gmail section).
 
 ## Changelog
 
+- **2.3.1** — Gmail ✨ prompt: a check in hand ("Check #: N Amount: $X", or a
+  "Check…" subject with an amount) routes to `receive-check-payment`, check
+  numbers show as `REFS: CHECK N`, and the sender's own signature block (name,
+  title, address, phone) is cut from each message body.
 - **2.3.0** — Gmail ✨ prompt carries the fields Cowork acts on, in less
   space: ROUTE (suggested skill), REFS (PO / SO / invoice / estimate / order
   numbers), TRACK (UPS / FedEx / USPS with carrier), LINES (quantity × SKU),
