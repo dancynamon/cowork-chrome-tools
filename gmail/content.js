@@ -28,7 +28,7 @@
 
   // Pure print-view parsing and blurb rendering live in gmail/parsers.js,
   // which the manifest loads first into this same isolated world.
-  const { parsePrintView, buildBlurb } = window.GmailParsers;
+  const { parsePrintView, buildBlurb, buildBatch, mapLimit, BATCH_FETCH_MAX } = window.GmailParsers;
 
   // ---- DOM metadata (IDs, account, attachments) ---------------------------
   // The Gmail web DOM exposes the API (hex) IDs directly via the
@@ -187,6 +187,49 @@
       }
     }
     build.then(copyText).then((ok) => toast(ok ? successMsg : "Copy failed", !ok));
+  }
+
+  // ---- batch: ticked inbox rows -------------------------------------------
+
+  // Visible list rows whose checkbox is ticked (Gmail marks them .x7 and
+  // aria-checked on the row's checkbox). Hidden rows (the list behind an open
+  // thread) do not count.
+  function selectedRows() {
+    return [...document.querySelectorAll("tr.zA")].filter((r) =>
+      r.offsetParent !== null &&
+      (r.classList.contains("x7") || r.querySelector('[role="checkbox"][aria-checked="true"]')) &&
+      legacyThreadId(r)
+    );
+  }
+
+  // One prompt for every ticked row: the first BATCH_FETCH_MAX threads are
+  // fetched (4 at a time), the rest get their identity block only.
+  async function batchText(rows) {
+    const metas = rows.map((row) => gatherDomMeta({ row }));
+    const ds = await mapLimit(metas, 4, (m, i) =>
+      i < BATCH_FETCH_MAX ? fetchThreadDigest(m.threadId) : null
+    );
+    return buildBatch(metas.map((meta, i) => ({ meta, d: ds[i] })));
+  }
+
+  // Copies via the ClipboardItem promise pattern, like deepDiveCopy.
+  function batchCopy(rows) {
+    const n = rows.length;
+    toast("Building prompt for " + n + " threads…");
+    const build = batchText(rows);
+    const done = (ok) => toast(ok ? "Cowork prompt copied (" + n + " threads)" : "Copy failed", !ok);
+    if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+      try {
+        const item = new ClipboardItem({
+          "text/plain": build.then((txt) => new Blob([txt], { type: "text/plain" })),
+        });
+        navigator.clipboard.write([item]).then(() => done(true), () => build.then(copyText).then(done));
+        return;
+      } catch (e) {
+        /* fall through */
+      }
+    }
+    build.then(copyText).then(done);
   }
 
   // ---- clipboard ----------------------------------------------------------
@@ -473,7 +516,14 @@
     } else if (req.type === "get-prompt") {
       // Popup: return the blurb text; the popup writes the clipboard itself
       // (the Gmail page is not focused while the popup is open).
-      const meta = gatherDomMeta({});
+      const rows = selectedRows();
+      if (rows.length > 1) {
+        batchText(rows)
+          .then((blurb) => sendResponse({ blurb, count: rows.length }))
+          .catch(() => sendResponse({ blurb: null }));
+        return true;
+      }
+      const meta = rows.length ? gatherDomMeta({ row: rows[0] }) : gatherDomMeta({});
       if (!meta.threadId) {
         sendResponse({ blurb: null });
       } else {
@@ -482,9 +532,15 @@
           .then((d) => sendResponse({ blurb: buildBlurb(meta, d) }));
       }
     } else if (req.type === "copy-prompt") {
-      const meta = gatherDomMeta({});
+      // Ticked inbox rows win: they are an explicit choice.
+      const rows = selectedRows();
+      if (rows.length > 1) {
+        batchCopy(rows);
+        return true;
+      }
+      const meta = rows.length ? gatherDomMeta({ row: rows[0] }) : gatherDomMeta({});
       if (meta.threadId) deepDiveCopy(meta, "Cowork blurb copied");
-      else toast("No thread open", true);
+      else toast("Open a thread or tick inbox rows", true);
     } else if (req.type === "copy-thread") {
       const link = currentThreadLink();
       if (link) {

@@ -7,8 +7,8 @@ One Chrome extension, two Claude Cowork helpers:
    Cowork prompt (subject, API thread/message IDs, sender, money, full thread)
    from any message or inbox row. `Alt+Shift+C` copies the message link,
    `Alt+Shift+T` the thread link, `Alt+Shift+P` the Cowork prompt for the
-   open thread, and the toolbar popup shows all three buttons when you are
-   on Gmail. Details: [gmail/README.md](gmail/README.md).
+   open thread (or one prompt for every ticked inbox row), and the toolbar
+   popup shows all three buttons when you are on Gmail. Details: [gmail/README.md](gmail/README.md).
 
 Until 2.0.0 these were two extensions, "Cowork Tab Group Namer" and "Gmail
 Message Link Copier". Remove both old copies when you load this one.
@@ -234,6 +234,12 @@ shortcuts, `popup.js` for the popup's Gmail section).
 
 ## Changelog
 
+- **2.4.0** — Gmail batch prompt: tick several inbox rows, then `Alt+Shift+P`
+  or the popup's ✨ button copies ONE Cowork prompt with a numbered block per
+  thread (SUBJECT, THREAD_ID, ROUTE, REFS, MONEY…, newest message cut to 500
+  characters) and a single `INTENT: process` at the end. The first 15 threads
+  are fetched, 4 at a time; any beyond that get their identity block only.
+  Ticked rows win over an open thread.
 - **2.3.1** — Gmail ✨ prompt: a check in hand ("Check #: N Amount: $X", or a
   "Check…" subject with an amount) routes to `receive-check-payment`, check
   numbers show as `REFS: CHECK N`, and the sender's own signature block (name,
