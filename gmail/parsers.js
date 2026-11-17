@@ -374,7 +374,10 @@
   // can pull the rest via THREAD_ID.
   // Labels THREAD_ID, PERMALINK, INTENT and LATEST MESSAGE are read by the
   // email-processing and inbox-sweep skills: keep their names.
-  function buildBlurb(meta, d) {
+  // opts.compact (batch blocks): no ACCOUNT (the batch header has it), the
+  // newest message cut to BATCH_LATEST_MAX, no EARLIER gists, no INTENT.
+  function buildBlurb(meta, d, opts) {
+    const compact = !!(opts && opts.compact);
     const tid = meta.threadId || "";
     const L = [];
     const put = (k, v) => { if (v) L.push(k + ": " + v); };
@@ -383,7 +386,7 @@
     const ids = meta.msgIds || [];
     if (ids.length > 1 || (ids.length === 1 && ids[0] !== tid)) put("MSG_IDS", "[" + ids.join(", ") + "]");
     if (tid) put("PERMALINK", "https://mail.google.com/mail/u/" + meta.account + "/#all/" + tid);
-    put("ACCOUNT", "u/" + meta.account + (meta.email ? " (" + meta.email + ")" : ""));
+    if (!compact) put("ACCOUNT", accountLine(meta));
 
     const text = (meta.subject || "") + "\n" + ((d && d.text) || "");
     const latest = (d && d.latest) || {};
@@ -414,7 +417,11 @@
       }).join(", "));
     }
 
-    if (d && d.latestBody) {
+    if (d && d.latestBody && compact) {
+      L.push("LATEST MESSAGE:", clip(d.latestBody, BATCH_LATEST_MAX));
+      const older = (d.earlier || []).length + (d.omitted || 0);
+      if (older) L.push("• (+" + older + " earlier, fetch via THREAD_ID)");
+    } else if (d && d.latestBody) {
       L.push("LATEST MESSAGE:", d.latestBody);
       if (d.earlier && d.earlier.length) {
         L.push("EARLIER (newest first):");
@@ -424,14 +431,57 @@
     } else {
       L.push("BODY: (open the thread via THREAD_ID to read it)");
     }
-    put("INTENT", "process");
+    if (!compact) put("INTENT", "process");
     return L.join("\n");
+  }
+
+  const accountLine = (meta) => "u/" + meta.account + (meta.email ? " (" + meta.email + ")" : "");
+
+  // ---- batch: several selected inbox rows in one prompt ---------------------
+  // Only the first BATCH_FETCH_MAX threads are fetched and parsed; the rest
+  // still get an identity block (SUBJECT / THREAD_ID / PERMALINK, refs from
+  // the subject) so nothing selected is silently dropped.
+  const BATCH_FETCH_MAX = 15;
+  const BATCH_LATEST_MAX = 500;
+
+  // entries: [{ meta, d }] in inbox order (d null when not fetched / failed).
+  // One entry is just the normal single-thread blurb.
+  function buildBatch(entries) {
+    entries = (entries || []).filter((e) => e && e.meta);
+    if (!entries.length) return "";
+    if (entries.length === 1) return buildBlurb(entries[0].meta, entries[0].d);
+    const n = entries.length;
+    const L = [
+      "BATCH: " + n + " Gmail threads. Handle each block on its own, in order; each has its own THREAD_ID and ROUTE.",
+      "ACCOUNT: " + accountLine(entries[0].meta),
+    ];
+    entries.forEach((e, i) => {
+      L.push("=== " + (i + 1) + "/" + n + " ===", buildBlurb(e.meta, e.d, { compact: true }));
+    });
+    L.push("=== end of batch ===", "INTENT: process");
+    return L.join("\n");
+  }
+
+  // Runs fn over items with at most `limit` in flight; results keep item order.
+  // A rejected call yields null instead of failing the batch.
+  async function mapLimit(items, limit, fn) {
+    const out = new Array(items.length);
+    let next = 0;
+    const worker = async () => {
+      while (next < items.length) {
+        const i = next++;
+        try { out[i] = await fn(items[i], i); } catch (e) { out[i] = null; }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+    return out;
   }
 
   const api = {
     clip, shortDate, shortSender, decodeStrip, cleanBody, normalizeDate,
     extractMoney, stripRecipients, senderBefore, parsePrintView, buildBlurb,
     trimSignature, extractRefs, extractTracking, extractLines, extractShipTo, extractTerms, routeFor, ROUTES,
+    buildBatch, mapLimit, BATCH_FETCH_MAX, BATCH_LATEST_MAX,
   };
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.GmailParsers = api;

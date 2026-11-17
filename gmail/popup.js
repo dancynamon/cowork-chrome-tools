@@ -59,12 +59,12 @@
       return;
     }
     if (!resp || !resp.blurb) {
-      setStatus("No thread open.", true);
+      setStatus("Open a thread or tick inbox rows.", true);
       return;
     }
     try {
       await navigator.clipboard.writeText(resp.blurb);
-      setStatus("Cowork prompt copied!");
+      setStatus(resp.count > 1 ? "Cowork prompt copied (" + resp.count + " threads)!" : "Cowork prompt copied!");
     } catch (e) {
       setStatus("Copy failed.", true);
     }

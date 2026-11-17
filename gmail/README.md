@@ -57,6 +57,26 @@ Claude Cowork prompt built around the link.
   Why the IDs matter: the web URL fragment (`#FMfcg…`) is the *web client's* id,
   not the API id — emitting the resolved hex `THREAD_ID` means Claude's Gmail
   connector never has to drive Chrome to scrape it.
+- **Batch (2.4.0):** tick several rows in the inbox list, then press
+  `Alt+Shift+P` or the popup's ✨ button. You get one prompt:
+
+  ```
+  BATCH: 3 Gmail threads. Handle each block on its own, in order; …
+  ACCOUNT: u/0 (<email>)
+  === 1/3 ===
+  SUBJECT: … THREAD_ID: … ROUTE: … REFS: … (same fields as above)
+  LATEST MESSAGE:
+  <newest message, up to 500 characters>
+  • (+2 earlier, fetch via THREAD_ID)
+  === 2/3 ===
+  …
+  === end of batch ===
+  INTENT: process
+  ```
+
+  Only the first 15 threads are fetched (4 at a time, `BATCH_FETCH_MAX` in
+  `parsers.js`); the rest still get SUBJECT / THREAD_ID / PERMALINK. Ticked
+  rows win over an open thread; one ticked row gives the normal single blurb.
 - If the print-view fetch fails, the blurb still carries the identity block
   (IDs + subject + account, plus any refs in the subject) so the connector can
   pull the rest via `THREAD_ID`.

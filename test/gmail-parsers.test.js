@@ -314,3 +314,84 @@ test('trimSignature: cuts the sender block, keeps sign-offs and bodies that only
   assert.equal(P.trimSignature('Pat pat@x.example.com', s), 'Pat pat@x.example.com');
   assert.equal(P.trimSignature('No address here', s), 'No address here');
 });
+
+// ---- batch prompt (2.4.0): several ticked inbox rows in one paste ----------
+
+const entry = (file, id, subject) => ({
+  meta: { account: '0', email: 'owner@store.example.com', threadId: id, msgIds: [id], subject },
+  d: file ? P.parsePrintView(fixture(file)) : null
+});
+
+test('buildBatch: one block per thread, each with its own THREAD_ID / ROUTE, one INTENT', () => {
+  const out = P.buildBatch([
+    entry('customer-po.html', 'a1', 'PURCHASE ORDER # F2000123'),
+    entry('check-received.html', 'b2', 'Check payment'),
+    entry('shopify-order.html', 'c3', '[Example Store] Order #1042 placed by Jo Tester')
+  ]);
+  const L = out.split('\n');
+  assert.match(L[0], /^BATCH: 3 Gmail threads\./);
+  assert.equal(L[1], 'ACCOUNT: u/0 (owner@store.example.com)');
+  assert.deepEqual(L.filter((l) => /^=== /.test(l)), ['=== 1/3 ===', '=== 2/3 ===', '=== 3/3 ===', '=== end of batch ===']);
+  assert.deepEqual(L.filter((l) => l.startsWith('THREAD_ID: ')), ['THREAD_ID: a1', 'THREAD_ID: b2', 'THREAD_ID: c3']);
+  assert.deepEqual(L.filter((l) => l.startsWith('ROUTE: ')),
+    ['ROUTE: process-sales-order', 'ROUTE: receive-check-payment', 'ROUTE: process-website-dropship-orders']);
+  // Labels the skills read stay intact; INTENT once, at the very end.
+  assert.equal(L.filter((l) => l === 'LATEST MESSAGE:').length, 3);
+  assert.equal(L.filter((l) => l.startsWith('INTENT')).length, 1);
+  assert.equal(L[L.length - 1], 'INTENT: process');
+  // ACCOUNT only in the header, not per block; no EARLIER gists in a batch.
+  assert.equal(L.filter((l) => l.startsWith('ACCOUNT: ')).length, 1);
+  assert.ok(!L.includes('EARLIER (newest first):'));
+});
+
+test('buildBatch: latest message clipped per block; earlier messages only counted', () => {
+  const d = P.parsePrintView(fixture('thread-invoice.html'));
+  d.latestBody = 'x'.repeat(900);
+  const out = P.buildBatch([{ meta: { account: '0', threadId: 't1', subject: 'Invoice 4417' }, d },
+    entry(null, 't2', 'Re: PO 55123')]);
+  const L = out.split('\n');
+  const body = L[L.indexOf('LATEST MESSAGE:') + 1];
+  assert.equal(body.length, P.BATCH_LATEST_MAX + 1); // + the ellipsis
+  if (d.earlier.length) assert.ok(L.some((l) => /^• \(\+\d+ earlier, fetch via THREAD_ID\)$/.test(l)));
+  // An unfetched thread still gets its identity block and subject refs.
+  assert.ok(L.includes('THREAD_ID: t2'));
+  assert.ok(L.includes('REFS: PO 55123'));
+  assert.ok(L.includes('BODY: (open the thread via THREAD_ID to read it)'));
+});
+
+test('buildBatch: one entry is the plain single-thread blurb; none is empty', () => {
+  const e = entry('customer-po.html', 'a1', 'PURCHASE ORDER # F2000123');
+  assert.equal(P.buildBatch([e]), P.buildBlurb(e.meta, e.d));
+  assert.equal(P.buildBatch([]), '');
+});
+
+test('buildBlurb without opts is unchanged by the compact option', () => {
+  const e = entry('customer-po.html', 'a1', 'PURCHASE ORDER # F2000123');
+  const L = P.buildBlurb(e.meta, e.d).split('\n');
+  assert.ok(L.includes('ACCOUNT: u/0 (owner@store.example.com)'));
+  assert.equal(L[L.length - 1], 'INTENT: process');
+});
+
+test('mapLimit: keeps order, caps concurrency, a failure becomes null', async () => {
+  let inFlight = 0, peak = 0;
+  const out = await P.mapLimit([1, 2, 3, 4, 5, 6, 7], 3, async (x) => {
+    inFlight++; peak = Math.max(peak, inFlight);
+    await new Promise((r) => setTimeout(r, 5 * (8 - x)));
+    inFlight--;
+    if (x === 4) throw new Error('boom');
+    return x * 10;
+  });
+  assert.deepEqual(out, [10, 20, 30, null, 50, 60, 70]);
+  assert.equal(peak, 3);
+  assert.deepEqual(await P.mapLimit([], 4, async () => 1), []);
+});
+
+test('content.js: ticked rows drive the batch for both the shortcut and the popup', () => {
+  const cs = fs.readFileSync(path.join(__dirname, '..', 'gmail', 'content.js'), 'utf8');
+  for (const name of ['buildBatch', 'mapLimit', 'BATCH_FETCH_MAX']) {
+    assert.match(cs, new RegExp('\\{[^}]*\\b' + name + '\\b[^}]*\\} = window\\.GmailParsers'));
+  }
+  const handler = (type) => cs.slice(cs.indexOf(`req.type === "${type}"`)).split('} else if')[0];
+  assert.match(handler('copy-prompt'), /selectedRows\(\)[\s\S]*batchCopy\(rows\)/);
+  assert.match(handler('get-prompt'), /selectedRows\(\)[\s\S]*batchText\(rows\)[\s\S]*count: rows\.length/);
+});
